@@ -1,5 +1,7 @@
 # Autopilot NodeKit v0.8.0
 
+[English](#english) | [中文](#中文)
+
 Autopilot NodeKit is a local control plane for running Codex against large, repeatable work. It turns a broad request into a project spec, task graph, verifier checks, review gates, repair loops, memory records, and audit logs.
 
 The v0.8 release focuses on startup. You no longer need to paste a long control prompt every time. Give Codex your task, mention `autopilot-nodekit`, and let the smart-start flow create the project files it needs.
