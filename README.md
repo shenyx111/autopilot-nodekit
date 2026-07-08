@@ -2,132 +2,6 @@
 
 [中文](#中文) | [English](#english)
 
-Autopilot NodeKit is a local control plane for running Codex against large, repeatable work. It turns a broad request into a project spec, task graph, verifier checks, review gates, repair loops, memory records, and audit logs.
-
-The v0.8 release focuses on startup. You no longer need to paste a long control prompt every time. Give Codex your task, mention `autopilot-nodekit`, and let the smart-start flow create the project files it needs.
-
-## English
-
-### Good fit
-
-Use NodeKit when a task is too large or too sensitive for one long prompt:
-
-- generating many paper figures or report figures;
-- cleaning, converting, or organizing batches of files;
-- producing scripts and checking their outputs;
-- fixing code, adding tests, and keeping verifier evidence;
-- resuming work after interruption with a clear history.
-
-### Example prompt
-
-```text
-Use autopilot-nodekit for this task:
-Create 100 publication-ready figures for a Nature-style paper.
-The input data is in data/. Each figure must include source-data notes,
-a plotting script, PDF/PNG/SVG outputs, a caption, and QC evidence.
-Do not fabricate data, do not use placeholder figures, and do not modify raw data.
-Run as automatically as possible, but ask me first if key settings are missing.
-```
-
-### Smart start
-
-Start from a prompt file:
-
-```bash
-python -m autopilot_nodekit smart-start \
-  --workspace . \
-  --prompt-file PROJECT_PROMPT.md \
-  --force-codex-native
-```
-
-When required settings are missing, NodeKit writes:
-
-```text
-START_QUESTIONS.md
-START_ANSWERS.yml.template
-```
-
-Fill the answers, set `confirmed: true`, then rerun:
-
-```bash
-python -m autopilot_nodekit smart-start \
-  --workspace . \
-  --prompt-file PROJECT_PROMPT.md \
-  --answers START_ANSWERS.yml \
-  --force-codex-native
-```
-
-### Settings NodeKit asks you to confirm
-
-- `gate_mode`: `fast`, `balanced`, or `strict`
-- `task_scale`: `smoke`, `standard`, or `prod`
-- `artifact_count`
-- target journal or target venue
-- deliverables, if the prompt leaves them unclear
-
-### Gate modes
-
-- `fast`: one startup approval, a boundary test, automatic F001 pilot guard, bulk loop, final audit.
-- `balanced`: one startup approval, a boundary test, human F001 pilot review, bulk loop, final audit.
-- `strict`: setup review, plan review, boundary test, human F001 pilot review, bulk loop, final audit.
-
-All modes keep the same quality floor: verifier checks, Santa dual review, repair loops, evidence, memory, logs, and final audit.
-
-### Task scales
-
-- `smoke`: 2 tasks per artifact.
-- `standard`: 3 tasks per artifact.
-- `prod`: 4 tasks per artifact, including a separate journal or compliance check.
-
-For 100 figures in fast mode, this means roughly 203, 303, or 403 tasks.
-
-### Background execution
-
-Check the available background backend first:
-
-```bash
-python -m autopilot_nodekit background-doctor --workspace .
-```
-
-Launch the best available backend:
-
-```bash
-python -m autopilot_nodekit launch-background \
-  --workspace . \
-  --worker-id codex-worker \
-  --max-cycles 0
-```
-
-`--max-cycles 0` means unlimited NodeKit cycles. Worker and verifier commands do not get a NodeKit wall-clock timeout unless you add one.
-
-### Main loop
-
-After startup, ask NodeKit for the next command:
-
-```bash
-python -m autopilot_nodekit next-command --workspace .
-```
-
-For an interactive Codex dialog on one task:
-
-```bash
-python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive
-bash runs/<run_id>/open_codex.sh
-python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>
-```
-
-### Verification
-
-```bash
-python -m compileall -q autopilot_nodekit tests
-python -m pytest -q
-python -m autopilot_nodekit validate --workspace . --strict
-```
-
-See `docs/SMART_START_BACKGROUND.md` for the full layer-to-command map.
-
----
-
 ## 中文
 
 Autopilot NodeKit 是给 Codex 用的本地任务控制面。它把一个大目标拆成项目规范、目标契约、任务清单、验证规则、审核记录和运行日志，让 Codex 一次处理一个边界清楚的任务。
@@ -259,3 +133,129 @@ python -m autopilot_nodekit launch-background \
 ### 一句话说明
 
 Autopilot NodeKit 让 Codex 按任务图、验证器、审核和日志运行。它更适合需要批量完成、失败可修、过程可查的工作。
+
+---
+
+## English
+
+Autopilot NodeKit is a local control plane for running Codex against large, repeatable work. It turns a broad request into a project spec, task graph, verifier checks, review gates, repair loops, memory records, and audit logs.
+
+The v0.8 release focuses on startup. You no longer need to paste a long control prompt every time. Give Codex your task, mention `autopilot-nodekit`, and let the smart-start flow create the project files it needs.
+
+### Good fit
+
+Use NodeKit when a task is too large or too sensitive for one long prompt:
+
+- generating many paper figures or report figures;
+- cleaning, converting, or organizing batches of files;
+- producing scripts and checking their outputs;
+- fixing code, adding tests, and keeping verifier evidence;
+- resuming work after interruption with a clear history.
+
+### Example prompt
+
+```text
+Use autopilot-nodekit for this task:
+Create 100 publication-ready figures for a Nature-style paper.
+The input data is in data/. Each figure must include source-data notes,
+a plotting script, PDF/PNG/SVG outputs, a caption, and QC evidence.
+Do not fabricate data, do not use placeholder figures, and do not modify raw data.
+Run as automatically as possible, but ask me first if key settings are missing.
+```
+
+### Smart start
+
+Start from a prompt file:
+
+```bash
+python -m autopilot_nodekit smart-start \
+  --workspace . \
+  --prompt-file PROJECT_PROMPT.md \
+  --force-codex-native
+```
+
+When required settings are missing, NodeKit writes:
+
+```text
+START_QUESTIONS.md
+START_ANSWERS.yml.template
+```
+
+Fill the answers, set `confirmed: true`, then rerun:
+
+```bash
+python -m autopilot_nodekit smart-start \
+  --workspace . \
+  --prompt-file PROJECT_PROMPT.md \
+  --answers START_ANSWERS.yml \
+  --force-codex-native
+```
+
+### Settings NodeKit asks you to confirm
+
+- `gate_mode`: `fast`, `balanced`, or `strict`
+- `task_scale`: `smoke`, `standard`, or `prod`
+- `artifact_count`
+- target journal or target venue
+- deliverables, if the prompt leaves them unclear
+
+### Gate modes
+
+- `fast`: one startup approval, a boundary test, automatic F001 pilot guard, bulk loop, final audit.
+- `balanced`: one startup approval, a boundary test, human F001 pilot review, bulk loop, final audit.
+- `strict`: setup review, plan review, boundary test, human F001 pilot review, bulk loop, final audit.
+
+All modes keep the same quality floor: verifier checks, Santa dual review, repair loops, evidence, memory, logs, and final audit.
+
+### Task scales
+
+- `smoke`: 2 tasks per artifact.
+- `standard`: 3 tasks per artifact.
+- `prod`: 4 tasks per artifact, including a separate journal or compliance check.
+
+For 100 figures in fast mode, this means roughly 203, 303, or 403 tasks.
+
+### Background execution
+
+Check the available background backend first:
+
+```bash
+python -m autopilot_nodekit background-doctor --workspace .
+```
+
+Launch the best available backend:
+
+```bash
+python -m autopilot_nodekit launch-background \
+  --workspace . \
+  --worker-id codex-worker \
+  --max-cycles 0
+```
+
+`--max-cycles 0` means unlimited NodeKit cycles. Worker and verifier commands do not get a NodeKit wall-clock timeout unless you add one.
+
+### Main loop
+
+After startup, ask NodeKit for the next command:
+
+```bash
+python -m autopilot_nodekit next-command --workspace .
+```
+
+For an interactive Codex dialog on one task:
+
+```bash
+python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive
+bash runs/<run_id>/open_codex.sh
+python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>
+```
+
+### Verification
+
+```bash
+python -m compileall -q autopilot_nodekit tests
+python -m pytest -q
+python -m autopilot_nodekit validate --workspace . --strict
+```
+
+See `docs/SMART_START_BACKGROUND.md` for the full layer-to-command map.
