@@ -1,0 +1,34 @@
+project:
+  name: autopilot-nodekit-project
+  goal: Replace this with your project goal.
+tasks:
+  - id: T001
+    title: Run project preflight
+    objective: Inspect the repository, identify setup commands, and run the smallest safe verification command.
+    success_criteria: A worker_result.json exists with status passed, or a graph_patch inserts a diagnostic bridge task using after_attempt.
+    priority: 100
+    max_attempts: 1
+    verifier:
+      command: ''
+      timeout_seconds: null
+    memory:
+      required_tags: [project, setup, entrypoint]
+      required_scopes: [project, tool, decision, bug]
+      search_queries:
+        - project setup command entrypoint verifier
+      search_limit: 12
+  - id: T002
+    title: Implement first target change
+    objective: Use the memory nodes from T001 to perform the first real project change.
+    success_criteria: Verification passes and memory nodes record the changed files, commands, and evidence.
+    depends_on: [T001]
+    priority: 90
+    memory:
+      required_task_ids: [T001]
+      required_tags: [setup, entrypoint, verification]
+      required_scopes: [tool, decision, bug]
+      search_queries:
+        - canonical setup command
+        - test command
+        - entrypoint
+      search_limit: 20

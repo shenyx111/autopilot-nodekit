@@ -1,0 +1,54 @@
+worker:
+  agent: shell
+  command: |
+    python - <<'PY'
+    import json, os, pathlib
+    run_dir = pathlib.Path(os.environ['AUTOPILOT_RUN_DIR'])
+    context = json.loads((run_dir / 'context_pack.json').read_text(encoding='utf-8'))
+    loaded = context.get('memory_retrieval', {}).get('loaded_count', 0)
+    (run_dir / 'worker_result.json').write_text(json.dumps({
+      'status': 'passed',
+      'summary': f'Demo worker passed; loaded_memory_nodes={loaded}.',
+      'details': 'Replace worker.command in automation/config.yml with examples/config.codex.yml for Codex-native execution. The prompt/context pack includes deterministic memory retrieval and an authoritative verifier contract.',
+      'memory_nodes': [{
+        'title': 'Demo node',
+        'scope': 'task',
+        'tags': ['demo', 'verification'],
+        'content': f'This node proves the control plane can claim, build deterministic memory context, run, record, verify, and render. This task saw {loaded} prior memory nodes in its context pack. Raw evidence is retained in runs/.',
+        'raw_artifacts': ['prompt.md', 'context_pack.json', 'memory_selection.json', 'stdout.log', 'stderr.log', 'worker_result.json', 'worker_result.normalized.json', 'control_result.json'],
+        'confidence': 0.9,
+      }]
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    PY
+  timeout_seconds: null
+verifier:
+  command: ''
+  timeout_seconds: null
+memory:
+  mode: structured_non_lossy
+  retrieval_strategy: deterministic_task_graph_then_tags_then_search
+  include_explicit_required: true
+  include_previous_attempts: true
+  include_parent_chain: true
+  include_dependencies: true
+  include_after_attempt: true
+  include_same_branch_recent: true
+  include_required_tags_scopes: true
+  include_search_queries: true
+  include_auto_fts: true
+  max_nodes_total: 24
+  previous_attempt_limit: 20
+  dependency_limit: 40
+  after_attempt_limit: 40
+  parent_limit: 30
+  branch_limit: 30
+  required_task_limit: 60
+  tag_scope_limit: 40
+  search_limit: 12
+  include_raw_artifact_paths: true
+  inject_full_nodes: false
+  node_excerpt_lines: 80
+tmux:
+  session_prefix: autopilot
+  default_cycles: 100
+  sleep_seconds: 5

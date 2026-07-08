@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "summary": "Preflight found pytest command and tests passed.",
+  "details": "Ran python -m pytest tests/test_core.py. It passed. The project requires PYTHONPATH=src before pytest.",
+  "memory_nodes": [
+    {
+      "title": "Project pytest setup rule",
+      "scope": "tool",
+      "tags": [
+        "pytest",
+        "setup",
+        "python",
+        "verification",
+        "entrypoint"
+      ],
+      "content": "For this repository, run PYTHONPATH=src python -m pytest. Without PYTHONPATH=src imports can fail. Evidence is in verifier.log and stdout.log.",
+      "raw_artifacts": [
+        "verifier.log",
+        "stdout.log",
+        "stderr.log"
+      ],
+      "confidence": 0.9
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "operations": [
+    {
+      "op": "supersede_task",
+      "old_id": "T002",
+      "new_task": {
+        "id": "T002@v2",
+        "title": "Implement first target change using verified setup path",
+        "objective": "Use the setup/test commands recorded by T001.1 before making the first real project change.",
+        "success_criteria": "The implementation passes the exact verifier command recorded in memory, and new memory nodes record changed files and evidence.",
+        "depends_on": ["T001.1"],
+        "priority": 95,
+        "memory": {
+          "required_task_ids": ["T001", "T001.1"],
+          "required_tags": ["setup", "entrypoint", "verification"],
+          "required_scopes": ["tool", "decision", "bug"],
+          "search_queries": ["canonical setup command", "verified test command", "entrypoint"],
+          "include_dependencies": true,
+          "include_same_branch_recent": true,
+          "search_limit": 24
+        }
+      }
+    }
+  ]
+}

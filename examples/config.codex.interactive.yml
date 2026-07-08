@@ -1,0 +1,25 @@
+# Use this config when you want NodeKit to prepare one fresh interactive Codex
+# dialog per task via `codex-prepare` / `codex-finish` instead of codex exec.
+worker:
+  agent: codex-interactive
+  command: ''
+  timeout_seconds: null
+verifier:
+  command: ''
+  timeout_seconds: null
+memory:
+  mode: structured_non_lossy
+  retrieval_strategy: deterministic_task_graph_then_tags_then_search
+  include_explicit_required: true
+  include_previous_attempts: true
+  include_parent_chain: true
+  include_dependencies: true
+  include_after_attempt: true
+  include_same_branch_recent: true
+  include_required_tags_scopes: true
+  include_search_queries: true
+  include_auto_fts: true
+  max_nodes_total: 24
+  include_raw_artifact_paths: true
+  inject_full_nodes: false
+  node_excerpt_lines: 80

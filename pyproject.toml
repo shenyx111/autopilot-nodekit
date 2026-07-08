@@ -1,0 +1,24 @@
+[project]
+name = "autopilot-nodekit"
+version = "0.8.0"
+description = "A Codex-native durable task graph + non-lossy memory control plane for long-running coding loops."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0.2"]
+
+[project.scripts]
+autopilot-nodekit = "autopilot_nodekit.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["autopilot_nodekit*"]
+exclude = ["skills*", "docs*", "examples*", "scripts*", "bin*"]
+
+[tool.setuptools.package-data]
+autopilot_nodekit = ["schema.sql"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]

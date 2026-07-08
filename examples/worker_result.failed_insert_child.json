@@ -1,0 +1,59 @@
+{
+  "status": "failed",
+  "summary": "T001 exposed an unknown setup/verification entrypoint; insert T001.1 before T002.",
+  "details": "The worker could not identify a canonical setup/test command. The next task should inspect pyproject.toml, package.json, Makefile, README, CI configs, and project scripts before any implementation task proceeds.",
+  "memory_nodes": [
+    {
+      "title": "Setup entrypoint is unresolved",
+      "scope": "bug",
+      "tags": ["setup", "entrypoint", "blocked", "verification"],
+      "content": "No reliable canonical install/build/test command has been established yet. Future implementation tasks must not assume pytest/npm/make until T001.1 records exact commands with evidence.",
+      "raw_artifacts": ["stdout.log", "stderr.log", "transcript.log"],
+      "confidence": 0.82
+    }
+  ],
+  "graph_patch": {
+    "operations": [
+      {
+        "op": "add_task",
+        "task": {
+          "id": "T001.1",
+          "parent_id": "T001",
+          "after_attempt": ["T001"],
+          "title": "Diagnose project setup and verification entrypoint",
+          "objective": "Find the canonical install/build/test commands and record exact evidence-backed commands as memory nodes.",
+          "success_criteria": "memory/nodes contains a tool/decision node with exact commands, working directory, environment variables, and raw evidence paths.",
+          "priority": 110,
+          "max_attempts": 1,
+          "memory": {
+            "required_task_ids": ["T001"],
+            "required_tags": ["setup", "entrypoint", "blocked", "verification"],
+            "required_scopes": ["bug", "tool", "decision"],
+            "search_queries": ["setup entrypoint unresolved", "canonical test command"],
+            "include_parent": true,
+            "include_same_branch": true,
+            "search_limit": 20
+          }
+        }
+      },
+      {
+        "op": "update_task",
+        "id": "T002",
+        "fields": {
+          "status": "blocked",
+          "blocked_by": ["T001.1"],
+          "result_summary": "Blocked until T001.1 records exact setup/test commands.",
+          "memory": {
+            "required_task_ids": ["T001", "T001.1"],
+            "required_tags": ["setup", "entrypoint", "verification"],
+            "required_scopes": ["tool", "decision", "bug"],
+            "search_queries": ["canonical setup command", "test command", "entrypoint"],
+            "include_dependencies": true,
+            "include_same_branch": true,
+            "search_limit": 20
+          }
+        }
+      }
+    ]
+  }
+}

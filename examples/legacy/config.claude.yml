@@ -1,0 +1,32 @@
+worker:
+  agent: claude-code
+  command: claude -p "$(cat \"$AUTOPILOT_PROMPT\")"
+  timeout_seconds: null
+verifier:
+  command: ''
+  timeout_seconds: null
+memory:
+  mode: structured_non_lossy
+  retrieval_strategy: deterministic_task_graph_then_tags_then_search
+  include_explicit_required: true
+  include_previous_attempts: true
+  include_parent_chain: true
+  include_dependencies: true
+  include_same_branch_recent: true
+  include_required_tags_scopes: true
+  include_search_queries: true
+  include_auto_fts: true
+  max_nodes_total: 80
+  previous_attempt_limit: 20
+  dependency_limit: 40
+  parent_limit: 30
+  branch_limit: 30
+  required_task_limit: 60
+  tag_scope_limit: 40
+  search_limit: 12
+  include_raw_artifact_paths: true
+  inject_full_nodes: true
+tmux:
+  session_prefix: autopilot-claude
+  default_cycles: 100
+  sleep_seconds: 10
