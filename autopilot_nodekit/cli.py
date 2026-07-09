@@ -46,6 +46,7 @@ from .smart_start import (
 )
 from .util import dump_yaml, load_yaml, render_table, workspace_paths
 from .shell_safety import lint_shell_command, render_findings, should_block
+from .operator import operator_step, operator_loop
 
 
 def default_interactive_codex_config() -> dict[str, Any]:
@@ -87,7 +88,7 @@ def ensure_default_config(paths: dict[str, Path]) -> None:
     if not paths["config"].exists():
         dump_yaml(paths["config"], default_interactive_codex_config())
         return
-    # Upgrade old v0.8 interactive/demo configs that had worker.command: ''.
+    # Upgrade old interactive/demo configs that had worker.command: ''.
     try:
         cfg = load_yaml(paths["config"])
     except Exception:
@@ -160,12 +161,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--worker-id", required=True)
     p.add_argument("--lease-seconds", type=int, default=0)
 
-    p = sub.add_parser("worker-loop", help="Run repeated claim/run/render cycles.")
+    p = sub.add_parser("worker-loop", help="Run repeated claim/run/render cycles. By default it also runs the non-human operator loop for repair/recover/resolve transitions.")
     p.add_argument("--workspace", default=".")
     p.add_argument("--worker-id", required=True)
     p.add_argument("--max-cycles", type=int, default=0, help="0 means unlimited cycles; no NodeKit wall-clock timeout.")
     p.add_argument("--sleep-seconds", type=int, default=5)
     p.add_argument("--lease-seconds", type=int, default=0)
+    p.add_argument("--no-auto-operator", action="store_true", help="Disable automatic add-repair-task / resolve-by-repair / recover-stale handling when no ready task exists.")
+    p.add_argument("--operator-stale-minutes", type=float, default=30.0)
+    p.add_argument("--max-auto-repair-depth", type=int, default=3)
 
     p = sub.add_parser("launch-tmux", help="Start a background tmux worker loop.")
     p.add_argument("--workspace", default=".")
@@ -185,6 +189,28 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sleep-seconds", type=int, default=5)
     p.add_argument("--lease-seconds", type=int, default=0)
     p.add_argument("--session-name")
+    p.add_argument("--no-auto-operator", action="store_true", help="Disable the background worker's built-in operator automation.")
+    p.add_argument("--operator-stale-minutes", type=float, default=30.0)
+    p.add_argument("--max-auto-repair-depth", type=int, default=3)
+
+    p = sub.add_parser("operator-step", help="Run one supervisor/control-plane step: auto add repair, resolve passed repair, recover stale, or launch background if requested.")
+    p.add_argument("--workspace", default=".")
+    p.add_argument("--worker-id", default="codex-worker")
+    p.add_argument("--stale-minutes", type=float, default=30.0)
+    p.add_argument("--max-auto-repair-depth", type=int, default=3)
+    p.add_argument("--start-background", action="store_true")
+    p.add_argument("--backend", choices=["tmux", "nohup", "setsid", "detached", "powershell", "foreground"], help="Backend to use when --start-background is needed.")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("operator-loop", help="Run the supervisor loop. It handles routine repair/recover/resolve transitions; it does not approve human gates.")
+    p.add_argument("--workspace", default=".")
+    p.add_argument("--worker-id", default="codex-worker")
+    p.add_argument("--max-cycles", type=int, default=0)
+    p.add_argument("--sleep-seconds", type=int, default=10)
+    p.add_argument("--stale-minutes", type=float, default=30.0)
+    p.add_argument("--max-auto-repair-depth", type=int, default=3)
+    p.add_argument("--start-background", action="store_true")
+    p.add_argument("--backend", choices=["tmux", "nohup", "setsid", "detached", "powershell", "foreground"], help="Backend to use when --start-background is needed.")
 
     p = sub.add_parser("recover-stale", help="Inspect or mark stale running task runs for repair instead of leaving them stuck in running.")
     p.add_argument("--workspace", default=".")
@@ -416,6 +442,45 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "doctor":
         return doctor(workspace)
+    if args.cmd == "operator-step":
+        db = AutoDB(paths["db"])
+        db.init_schema()
+        try:
+            report = operator_step(
+                workspace,
+                db,
+                worker_id=args.worker_id,
+                stale_minutes=args.stale_minutes,
+                max_auto_repair_depth=args.max_auto_repair_depth,
+                start_background=args.start_background,
+                backend=args.backend,
+            )
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            else:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+        finally:
+            db.close()
+        return 0
+    if args.cmd == "operator-loop":
+        db = AutoDB(paths["db"])
+        db.init_schema()
+        try:
+            cycles = operator_loop(
+                workspace,
+                db,
+                worker_id=args.worker_id,
+                max_cycles=args.max_cycles,
+                sleep_seconds=args.sleep_seconds,
+                stale_minutes=args.stale_minutes,
+                max_auto_repair_depth=args.max_auto_repair_depth,
+                start_background=args.start_background,
+                backend=args.backend,
+            )
+            print(f"operator-loop cycles={cycles}")
+        finally:
+            db.close()
+        return 0
     if args.cmd == "background-doctor":
         info = detect_background_backends(workspace)
         if args.json:
@@ -485,7 +550,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"run_id={run_id}" if run_id else "No ready task.")
             return 0
         if args.cmd == "worker-loop":
-            cycles = worker_loop(workspace, db, args.worker_id, args.max_cycles, args.sleep_seconds, args.lease_seconds)
+            cycles = worker_loop(
+                workspace,
+                db,
+                args.worker_id,
+                max_cycles=args.max_cycles,
+                sleep_seconds=args.sleep_seconds,
+                lease_seconds=args.lease_seconds,
+                auto_operator=not args.no_auto_operator,
+                operator_stale_minutes=args.operator_stale_minutes,
+                max_auto_repair_depth=args.max_auto_repair_depth,
+            )
             print(f"worker_loop cycles={cycles}")
             return 0
         if args.cmd == "launch-tmux":
@@ -502,6 +577,9 @@ def main(argv: list[str] | None = None) -> int:
                 lease_seconds=args.lease_seconds,
                 backend=args.backend,
                 session_name=args.session_name,
+                auto_operator=not args.no_auto_operator,
+                operator_stale_minutes=args.operator_stale_minutes,
+                max_auto_repair_depth=args.max_auto_repair_depth,
             )
             print(json.dumps(info, ensure_ascii=False, indent=2))
             return 0
@@ -689,7 +767,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "approve-start":
             db.approve_task("G000_START_REVIEW", summary=args.summary, require_gates=True)
             render_live_manifest(workspace, db)
-            print("Approved G000_START_REVIEW. Boundary/permission test can now release; use next-command.")
+            print("Approved G000_START_REVIEW. Run background-doctor, then launch-background to let the worker/operator continue. Use next-command only for diagnosis.")
             return 0
         if args.cmd == "setup-review":
             setup = load_project_setup(workspace)
@@ -1093,9 +1171,9 @@ def build_contract_goal_text(contract: dict[str, Any]) -> str:
         f"Human gates are mandatory: {', '.join(str(g.get('id')) for g in gates if isinstance(g, dict))}. "
         f"Verifier is authoritative; required checks: {'; '.join(str(x) for x in required_checks[:6])}. "
         f"Santa dual-review is mandatory for non-human task pass results: reviewer_a=NICE and reviewer_b=NICE. "
-        f"Use only NodeKit commands: validate --strict, next-command, codex-prepare, codex-finish, approve-setup, approve-plan, approve-pilot, metrics. "
+        f"Use NodeKit commands for control: validate --strict, background-doctor, launch-background, worker-loop, operator-step, approve-setup, approve-plan, approve-pilot, metrics. "
         f"Stop if: {'; '.join(str(x) for x in stops[:5])}. "
-        "Never fabricate data, never bypass review_pending gates, and never mark DONE from LLM self-report without verifier evidence."
+        "Never fabricate data, never bypass review_pending gates, and never mark a task complete from LLM self-report without verifier evidence."
     )
     return goal[:3898].rstrip() + ("…" if len(goal) > 3898 else "")
 

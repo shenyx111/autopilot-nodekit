@@ -14,7 +14,7 @@
 ```bash
 git init
 git add .
-git commit -m "Initial open-source release of Autopilot NodeKit v0.9.1"
+git commit -m "Release Autopilot NodeKit v0.9.3"
 git branch -M main
 git remote add origin https://github.com/<OWNER>/autopilot-nodekit.git
 git push -u origin main

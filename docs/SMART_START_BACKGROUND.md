@@ -1,6 +1,8 @@
 # Smart-start and background execution
 
-v0.9 keeps `autopilot-nodekit` as a fixed startup flow and hardens the path into background loop execution. It now avoids forcing non-figure projects through the journal-figure template, installs `.nodekit` runtime wrappers, and checks the background backend before startup approval.
+This note is for maintainers and agent implementers. Public users should start from `README.md`, paste the agent instruction block into their AI agent, and let the agent run NodeKit.
+
+NodeKit keeps `autopilot-nodekit` as a fixed startup flow and hardens the path into background loop execution. It avoids forcing non-figure projects through the journal-figure template, installs `.nodekit` runtime wrappers, checks the background backend before startup approval, and lets the v0.9.3 operator handle routine repair, recovery, and repair resolution.
 
 ## Trigger phrase
 
@@ -79,24 +81,26 @@ Then run:
 python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
-`--max-cycles 0` means unlimited cycles. NodeKit defaults do not impose wall-clock timeouts on worker or verifier commands.
+`--max-cycles 0` means NodeKit does not set a cycle limit. The worker keeps iterating until it hits a gate, an error, or an external limit. NodeKit defaults do not impose wall-clock timeouts on worker or verifier commands.
+
+The background worker runs with operator automation enabled by default. When there is no ready task, the operator may add a focused repair task, resolve a failed parent from a passed repair, recover a stale run, or release downstream work. It must not approve human gates, delete files, submit expensive compute, use credentials, or change remote repositories.
 
 ## Layer command map
 
 - Layer 0 setup/capability: `setup-review`, `approve-start` or `approve-setup`, `background-doctor`.
 - Goal/contract: `project-spec-review`, `contract-review`, `codex-contract-goal`.
 - Task manifest/DAG: `review-plan`, `status`, `validate --strict`.
-- Execution loop: `codex-prepare`, `bash runs/<run_id>/open_codex.sh`, `codex-finish`.
+- Execution loop: `worker-loop` or `launch-background`; `codex-prepare` / `codex-finish` are for manual debugging or pilot inspection.
 - State/memory: `memory-plan`, `memory-search`, `replay-run`.
 - Verification: `verify-artifact`, `validate --strict`, inspect `runs/<run_id>/verifier.log`.
-- Repair/reflection: `add-repair-task`, then execute that repair task with `codex-prepare` and `codex-finish`.
+- Repair/reflection: routine `add-repair-task`, `resolve-by-repair`, and `recover-stale` are operator actions. Stop for human review only after repeated failures or a safety gate.
 - Human gates: `approve-start`, `approve-setup`, `approve-plan`, `approve-pilot`, `approve-task`, `reject-task`.
 - Observability: `metrics`, `automation/events.jsonl`, `automation/manifest.live.md`, `replay-run`.
 
 ## One-line agent instruction
 
 ```text
-基于 autopilot-nodekit 包里的固定流程，完成以下任务：<你的任务>。请先把我的任务写入 PROJECT_PROMPT.md，然后运行 smart-start；如果 START_QUESTIONS.md 出现，只问我里面缺失的设置，不要开始任务；设置确认后再生成 PROJECT_SPEC.yml、Goal Contract、Task Manifest，并从 next-command 给出的强命令继续。
+基于 autopilot-nodekit 包里的固定流程，完成以下任务：<你的任务>。请先把我的任务写入 PROJECT_PROMPT.md，然后运行 smart-start；如果 START_QUESTIONS.md 出现，只问我里面缺失的设置，不要开始任务；设置确认后生成 PROJECT_SPEC.yml、Goal Contract 和 Task Manifest。后台模式下请运行 background-doctor 和 launch-background，让 worker-loop 与 operator 按任务图、gate、verifier、repair 和恢复逻辑继续。
 ```
 
 ## v0.9 bootstrap hardening
@@ -116,7 +120,7 @@ After approval, start exactly one background worker:
 python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
-Use these commands to inspect and repair the control plane:
+Use these commands only when inspecting the control plane manually. In normal background mode the operator handles routine recovery and repair resolution:
 
 ```bash
 python -m autopilot_nodekit background-status --workspace . --worker-id codex-worker

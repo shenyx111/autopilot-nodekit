@@ -1,6 +1,6 @@
 # Worker adapters
 
-A worker adapter is `automation/config.yml`. v0.7.0 is Codex-first; shell remains the local demo/test adapter.
+A worker adapter is configured in `automation/config.yml`. The package is Codex-first; shell remains the local demo/test adapter.
 
 Codex non-interactive example:
 

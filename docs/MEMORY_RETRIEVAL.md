@@ -1,4 +1,4 @@
-# Memory retrieval in v0.7.0
+# Memory retrieval
 
 Memory is non-lossy: raw evidence remains in `runs/` and `memory/nodes/`. Summaries and excerpts are indexes, not substitutes for raw records.
 

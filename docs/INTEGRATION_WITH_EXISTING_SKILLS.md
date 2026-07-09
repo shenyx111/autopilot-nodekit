@@ -1,6 +1,6 @@
 # Integration with Codex skills
 
-v0.7 installs repo-local Codex skills under `.agents/skills`.
+NodeKit installs repo-local Codex skills under `.agents/skills`.
 
 ## Recommended skills
 
@@ -33,6 +33,9 @@ automation/events.jsonl
 ## Preferred startup
 
 ```bash
-python -m autopilot_nodekit start-from-prompt --workspace . --prompt-file PROJECT_PROMPT.md --gate-mode fast --force-codex-native
-python -m autopilot_nodekit next-command --workspace .
+python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
+
+Use `status`, `background-status`, and `next-command` for diagnosis and supervision, not as a button after each task.

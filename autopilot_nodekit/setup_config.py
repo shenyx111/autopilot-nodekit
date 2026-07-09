@@ -66,7 +66,7 @@ def build_figure_project_setup(
                 f"{data_dir}/F002* ... {data_dir}/F{figure_count:03d}* or an approved source-location exception",
                 "journal requirements file or project_memory/rules.md entry",
             ],
-            "missing_input_policy": "Block the task with evidence; never fabricate data or draw placeholder figures as DONE.",
+            "missing_input_policy": "Block the task with evidence; never fabricate data or treat placeholder figures as complete.",
         },
         "outputs": {
             "required_roots": [output_dir, script_dir, "tasks", "project_memory", "logs/raw", "runs", "memory/nodes", "automation"],

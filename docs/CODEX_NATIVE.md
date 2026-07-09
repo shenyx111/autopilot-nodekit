@@ -1,4 +1,4 @@
-# Codex-native integration in v0.7.0
+# Codex-native integration
 
 NodeKit uses Codex as the worker and keeps a durable outer loop outside the model context.
 
@@ -54,4 +54,4 @@ bash runs/<run_id>/open_codex.sh
 python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>
 ```
 
-The prepared prompt includes task contract, memory selection, verifier rule, and Santa dual-review requirement.
+The prepared prompt includes task contract, memory selection, verifier rule, and Santa dual-review requirement. In v0.9.3, unattended projects should normally use `worker-loop` or `launch-background` with operator automation; the interactive handoff is mainly for debugging, pilot tasks, or manual inspection.

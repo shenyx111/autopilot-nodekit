@@ -1,6 +1,6 @@
 ---
 name: autopilot-project-spec
-description: Use when a fuzzy user prompt should become a complete Autopilot NodeKit PROJECT_SPEC.yml before task generation; v0.8 requires asking missing startup settings instead of silently guessing.
+description: Use when a fuzzy user prompt should become a complete Autopilot NodeKit PROJECT_SPEC.yml before task generation; missing startup settings must be asked instead of silently guessed.
 ---
 
 # Autopilot Project Spec

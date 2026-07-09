@@ -79,18 +79,15 @@ def next_command(workspace: Path, db: AutoDB) -> Dict[str, Any]:
             "why": "First pilot QC passed; gate_mode requires human pilot review before F002+ releases.",
         }
 
-    # Prefer resolving failed tasks that already have a passed repair child.
-    for task in failed:
-        repair = _passed_repair_for(task["id"], tasks)
-        if repair:
-            return {
-                "phase": "resolve_failed_task_by_passed_repair",
-                "task_id": task["id"],
-                "repair_task_id": repair["id"],
-                "command": f"python -m autopilot_nodekit resolve-by-repair --workspace . --failed-task-id {task['id']} --repair-task-id {repair['id']} --summary 'Resolved by passed repair evidence.'",
-                "why": "A focused repair task has passed; resolve the failed parent and rewire downstream gates to the repair evidence instead of nesting repairs forever.",
-            }
-
+    # Mainline-first scheduling guard.
+    #
+    # Earlier versions scanned every historical failed task before considering
+    # whether the current mainline had already moved on. In long repair chains
+    # this could drag the operator back to an old failed repair task after F001
+    # had already released F002. v0.9.3 only repairs/resolves failures that are
+    # still on the active frontier: they block unreleased downstream tasks, or
+    # they are the current leaf failure with no later mainline progress. Ready
+    # work always wins over historical failed leftovers.
     if ready:
         task = ready[0]
         return {
@@ -100,13 +97,26 @@ def next_command(workspace: Path, db: AutoDB) -> Dict[str, Any]:
             "why": f"Next ready task is {task['id']}: {task['title']}. In unattended mode, a background worker should claim this automatically; do not manually claim if a worker is healthy.",
         }
 
-    if failed:
-        task = failed[0]
+    actionable_failed, ignored_failed = _active_failed_tasks(db, tasks)
+
+    for task in actionable_failed:
+        repair = _passed_repair_for(task["id"], tasks)
+        if repair:
+            return {
+                "phase": "resolve_failed_task_by_passed_repair",
+                "task_id": task["id"],
+                "repair_task_id": repair["id"],
+                "command": f"python -m autopilot_nodekit resolve-by-repair --workspace . --failed-task-id {task['id']} --repair-task-id {repair['id']} --summary 'Resolved by passed repair evidence.'",
+                "why": "A focused repair task has passed and the failed parent is still on the active frontier; resolve it and rewire blocked downstream gates.",
+            }
+
+    if actionable_failed:
+        task = actionable_failed[0]
         return {
             "phase": "repair_required",
             "task_id": task["id"],
             "command": f"python -m autopilot_nodekit add-repair-task --workspace . --failed-task-id {task['id']} --summary '<failure reason>'",
-            "why": "A failed task needs a focused repair task or human decision.",
+            "why": "An active-frontier failed task needs a focused repair task or human decision. Historical failed tasks that no longer block mainline progress are ignored.",
         }
 
     if blocked:
@@ -148,6 +158,62 @@ def _passed_repair_for(task_id: str, tasks: Dict[str, Dict[str, Any]]) -> Option
     if not repairs:
         return None
     return sorted(repairs, key=lambda t: len(t["id"]), reverse=True)[0]
+
+
+def _active_failed_tasks(db: AutoDB, tasks: Dict[str, Dict[str, Any]]) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]]]:
+    failed = [t for t in tasks.values() if t.get("status") == "failed" and not t.get("superseded_by")]
+    active: list[Dict[str, Any]] = []
+    ignored: list[Dict[str, Any]] = []
+    for task in sorted(failed, key=lambda t: (-int(t.get("priority") or 0), int(t.get("manifest_order") or 100000), str(t.get("id") or ""))):
+        tid = str(task.get("id") or "")
+        if _blocks_unreleased_downstream(db, tid, tasks):
+            active.append(task)
+            continue
+        if _is_repair_task_id(tid):
+            # A failed repair task that no longer gates downstream progress is
+            # historical evidence, not the current mainline frontier.
+            ignored.append(task)
+            continue
+        if _is_frontier_leaf_failure(task, tasks):
+            active.append(task)
+        else:
+            ignored.append(task)
+    return active, ignored
+
+
+def _blocks_unreleased_downstream(db: AutoDB, task_id: str, tasks: Dict[str, Dict[str, Any]]) -> bool:
+    for edge in db.list_edges(edge_type="depends_on") + db.list_edges(edge_type="after_attempt") + db.list_edges(edge_type="blocked_by"):
+        if edge["to_task"] != task_id:
+            continue
+        downstream = tasks.get(edge["from_task"])
+        if not downstream:
+            continue
+        # planned/blocked/review_pending downstream items still need this edge
+        # to resolve. ready/running/passed/skipped/superseded have already moved
+        # beyond it, so the failed task is not an active blocker.
+        if downstream.get("status") in {"planned", "blocked", "review_pending"}:
+            return True
+    return False
+
+
+def _is_frontier_leaf_failure(task: Dict[str, Any], tasks: Dict[str, Dict[str, Any]]) -> bool:
+    order = int(task.get("manifest_order") or 100000)
+    tid = str(task.get("id") or "")
+    # If any later mainline task has already progressed, this failure is
+    # historical and should not steal scheduler focus. Repair IDs are ignored
+    # here because they are side-branches, not mainline milestones.
+    for other in tasks.values():
+        oid = str(other.get("id") or "")
+        if oid == tid or _is_repair_task_id(oid):
+            continue
+        other_order = int(other.get("manifest_order") or 100000)
+        if other_order > order and other.get("status") in {"ready", "running", "passed", "review_pending", "planned", "blocked"}:
+            return False
+    return True
+
+
+def _is_repair_task_id(task_id: str) -> bool:
+    return "_REPAIR_" in task_id
 
 
 def format_next_command(info: Dict[str, Any]) -> str:

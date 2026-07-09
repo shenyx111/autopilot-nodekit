@@ -87,6 +87,9 @@ def launch_background_worker(
     lease_seconds: int = 0,
     backend: Optional[str] = None,
     session_name: Optional[str] = None,
+    auto_operator: bool = True,
+    operator_stale_minutes: float = 30.0,
+    max_auto_repair_depth: int = 3,
 ) -> Dict[str, Any]:
     workspace = workspace.resolve()
     install_nodekit_runtime(workspace, force=False)
@@ -120,7 +123,13 @@ def launch_background_worker(
         str(int(sleep_seconds)),
         "--lease-seconds",
         str(int(lease_seconds)),
+        "--operator-stale-minutes",
+        str(float(operator_stale_minutes)),
+        "--max-auto-repair-depth",
+        str(int(max_auto_repair_depth)),
     ]
+    if not auto_operator:
+        args.append("--no-auto-operator")
     env = _runtime_env()
     run_meta: Dict[str, Any] = {
         "backend": selected,
@@ -131,6 +140,9 @@ def launch_background_worker(
         "package_root": str(package_root()),
         "max_cycles": max_cycles,
         "lease_seconds": lease_seconds,
+        "auto_operator": auto_operator,
+        "operator_stale_minutes": operator_stale_minutes,
+        "max_auto_repair_depth": max_auto_repair_depth,
         "timeout_policy": "No NodeKit wall-clock timeout; --max-cycles 0 means unlimited cycles; --lease-seconds 0 means no lease expiry.",
         "log_path": str(log_path),
         "stderr_path": str(err_path),

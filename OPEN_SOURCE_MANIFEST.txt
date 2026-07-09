@@ -1,4 +1,4 @@
-Autopilot NodeKit v0.9.1 open-source GitHub bundle
+Autopilot NodeKit v0.9.3 open-source bundle
 
 Included:
 - Python package: autopilot_nodekit/
@@ -17,3 +17,6 @@ Excluded by .gitignore:
 - private project specs/answers
 - secrets/API keys
 - large compute outputs/model files
+
+Notable v0.9.3 document:
+- docs/OPERATOR_AUTOMATION.md

@@ -7,7 +7,7 @@
 
 ## Safety / control-plane checklist
 
-- [ ] Does not bypass verifier-authoritative DONE.
+- [ ] Does not mark tasks complete before the verifier passes.
 - [ ] Does not bypass Santa review where required.
 - [ ] Does not silently disable repair/final audit.
 - [ ] Handles Windows/Linux assumptions explicitly.

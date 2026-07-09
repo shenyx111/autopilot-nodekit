@@ -327,7 +327,17 @@ def read_existing(path: Path) -> str:
         return ""
 
 
-def worker_loop(workspace: Path, db: AutoDB, worker_id: str, max_cycles: int = 100, sleep_seconds: int = 5, lease_seconds: int = 0) -> int:
+def worker_loop(
+    workspace: Path,
+    db: AutoDB,
+    worker_id: str,
+    max_cycles: int = 100,
+    sleep_seconds: int = 5,
+    lease_seconds: int = 0,
+    auto_operator: bool = True,
+    operator_stale_minutes: float = 30.0,
+    max_auto_repair_depth: int = 3,
+) -> int:
     cycles = 0
     idle = 0
     _write_worker_heartbeat(workspace, worker_id, phase="started", cycle=cycles, detail="worker-loop started")
@@ -336,9 +346,33 @@ def worker_loop(workspace: Path, db: AutoDB, worker_id: str, max_cycles: int = 1
         run_id = run_once(workspace, db, worker_id, lease_seconds=lease_seconds)
         cycles += 1
         if run_id is None:
+            operator_action = None
+            if auto_operator:
+                try:
+                    from .operator import operator_step
+
+                    operator_action = operator_step(
+                        workspace,
+                        db,
+                        worker_id=worker_id,
+                        stale_minutes=operator_stale_minutes,
+                        max_auto_repair_depth=max_auto_repair_depth,
+                        start_background=False,
+                    )
+                except Exception as exc:
+                    operator_action = {"action": "operator_error", "error": str(exc), "handled": False}
+            handled = bool(isinstance(operator_action, dict) and operator_action.get("handled"))
+            if handled:
+                idle = 0
+                _write_worker_heartbeat(workspace, worker_id, phase="operator_handled", cycle=cycles, detail=str(operator_action.get("action")))
+                time.sleep(min(1, max(0, sleep_seconds)))
+                continue
             idle += 1
-            _write_worker_heartbeat(workspace, worker_id, phase="idle", cycle=cycles, detail=f"no ready task; idle_count={idle}")
-            if idle >= 3:
+            detail = f"no ready task; idle_count={idle}"
+            if operator_action:
+                detail += f"; operator_action={operator_action.get('action')}"
+            _write_worker_heartbeat(workspace, worker_id, phase="idle", cycle=cycles, detail=detail)
+            if idle >= 3 and max_cycles > 0:
                 _write_worker_heartbeat(workspace, worker_id, phase="stopped_idle", cycle=cycles, detail="no ready tasks after 3 idle polls")
                 break
             time.sleep(sleep_seconds)

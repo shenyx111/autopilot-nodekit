@@ -28,8 +28,8 @@ REQUIRED_DOD_ITEMS = [
     "Every deliverable has source inputs or an explicit human-approved missing-input exception.",
     "Every deliverable has a reproducible script or build command.",
     "Expected output files exist and pass artifact verification.",
-    "Verifier evidence is recorded before DONE.",
-    "No placeholder, fabricated, or unverified artifact is marked DONE.",
+    "Verifier evidence is recorded before a task is treated as complete.",
+    "No placeholder, fabricated, or unverified artifact is marked complete.",
 ]
 
 
@@ -142,7 +142,7 @@ def build_figure_goal_contract(
         "forbidden": [
             "Do not fabricate data, labels, captions, or provenance.",
             "Do not create placeholder figures and mark them complete.",
-            "Do not mark DONE/passed from worker self-report alone; verifier evidence is authoritative.",
+            "Do not mark complete or passed from worker self-report alone; verifier evidence is authoritative.",
             "Do not bypass review_pending tasks by editing SQLite directly.",
             "Do not write outside allowed output, task, log, run, and memory paths unless the boundary test explicitly approves it.",
         ],
@@ -236,14 +236,12 @@ def render_goal_contract_review(contract: Dict[str, Any]) -> str:
         "",
         "```bash",
         "python -m autopilot_nodekit validate --workspace . --strict",
-        "python -m autopilot_nodekit next-command --workspace .",
-        "python -m autopilot_nodekit approve-setup --workspace .",
-        "python -m autopilot_nodekit approve-plan --workspace .",
-        "python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive",
-        "python -m autopilot_nodekit codex-finish --workspace . --run-id <RUN_ID>",
-        "python -m autopilot_nodekit approve-pilot --workspace .",
+        "python -m autopilot_nodekit background-doctor --workspace .",
+        "python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0",
         "python -m autopilot_nodekit metrics --workspace .",
         "```",
+        "",
+        "`next-command`, `status`, and `background-status` are diagnostic commands. Normal background runs should let the worker/operator handle routine progress.",
         "",
     ]
     return "\n".join(lines)

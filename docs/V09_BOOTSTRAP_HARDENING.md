@@ -91,9 +91,9 @@ python -m autopilot_nodekit resolve-by-repair --workspace . --failed-task-id <FA
 
 This marks the failed parent as superseded and rewires downstream gating edges to the repair evidence.
 
-## v0.9.1 shell-safety lint
+## Shell-safety lint
 
-v0.9.1 adds verifier/bootstrap shell-safety linting. Deterministic verifier
+NodeKit includes verifier/bootstrap shell-safety linting. Deterministic verifier
 commands are expected to be read-only. The runner blocks common accidental
 side-effect patterns before execution, including:
 

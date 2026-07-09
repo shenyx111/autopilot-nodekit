@@ -6,12 +6,12 @@ This bundle uses a conservative Codex-first loop architecture.
 
 1. A loop is not repeated prompting. It needs a goal, state, tools, verification, repair, metrics, and a stopping condition.
 2. Durable state must live outside the conversation. NodeKit uses SQLite, `automation/manifest.live.md`, `runs/`, `memory/nodes/`, `LOOP_STATE.md`, and `PLANS.md`.
-3. Human gates should be risk-based. v0.7 supports `fast`, `balanced`, and `strict` gate modes so bulk loops do not stop unnecessarily.
+3. Human gates should be risk-based. NodeKit supports `fast`, `balanced`, and `strict` gate modes so bulk loops do not stop unnecessarily.
 4. Large batches must not collapse into vague tasks. The figure generator creates 303-305 tasks for 100 figures depending on gate mode.
 5. Verifiers override agent self-report. A worker cannot pass a task if the verifier fails.
 6. Every non-human pass requires Santa NICE/NICE review with evidence.
 7. Use repair tasks, not hidden retries. QC failures should insert focused graph-patch repair tasks with evidence and memory selectors.
-8. Project prompts should become specs. v0.7 turns `PROJECT_PROMPT.md` into `PROJECT_SPEC.yml`, then into contract + manifest + Codex handoffs.
+8. Project prompts should become specs. NodeKit turns `PROJECT_PROMPT.md` into `PROJECT_SPEC.yml`, then into contract, manifest, and agent handoffs.
 
 ## Mapping to Codex-native mechanisms
 

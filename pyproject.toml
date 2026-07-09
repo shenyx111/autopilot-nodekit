@@ -1,6 +1,6 @@
 [project]
 name = "autopilot-nodekit"
-version = "0.9.1"
+version = "0.9.3"
 description = "A hardened Codex-native durable task graph + background loop control plane for long-running research workflows."
 readme = "README.md"
 license = { text = "MIT" }

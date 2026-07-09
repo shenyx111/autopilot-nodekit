@@ -337,7 +337,7 @@ class AutoDB:
                 return None
             attempt = int(task["attempt_count"] or 0) + 1
             run_id = f"R-{now_iso().replace(':','').replace('-','').replace('Z','')}-{uuid.uuid4().hex[:8]}"
-            lease_until = now_iso_from_seconds(lease_seconds)
+            lease_until = None if int(lease_seconds) <= 0 else now_iso_from_seconds(lease_seconds)
             ts = now_iso()
             self.conn.execute(
                 "UPDATE tasks SET status='running', assigned_worker=?, lease_until=?, attempt_count=?, updated_at=? WHERE id=?",

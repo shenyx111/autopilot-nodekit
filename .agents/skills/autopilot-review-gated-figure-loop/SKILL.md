@@ -7,7 +7,7 @@ description: Use for large artifact batches such as 100 journal figures where Co
 
 Use this skill whenever the user asks for many journal figures, plots, panels, charts, or repeated deliverables.
 
-## Preferred v0.7 startup
+## Preferred startup
 
 Start from a project prompt and let NodeKit draft the spec:
 
@@ -40,23 +40,21 @@ Fast mode has one manual startup approval. After that, do not keep stopping for 
 
 Balanced mode adds one human pilot gate. Strict mode keeps setup, plan, and pilot gates.
 
-## Per-task Codex loop
+## Background-first loop
 
 ```bash
-python -m autopilot_nodekit next-command --workspace .
-python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive
-bash runs/<run_id>/open_codex.sh
-python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
-Each prepared task gets a fresh Codex conversation with its own prompt, context pack, verifier contract, memory selection, and required `worker_result.json` path.
+Use `codex-prepare` and `codex-finish` only for manual debugging, pilot inspection, or a human-visible task dialog. Routine repair, stale recovery, and passed-repair resolution should be handled by the worker-loop operator.
 
 ## Self-correction rule
 
 Before a non-human task is marked passed, run Santa dual-review and require NICE/NICE. If a figure fails QC, do not mark it passed. Insert focused repair tasks with `graph_patch`, using `after_attempt` or `depends_on` correctly, and include memory selectors so future tasks inherit failure evidence.
 
 
-## v0.8 task scale and startup rules
+## Task scale and startup rules
 
 Use `smart-start` first for all natural-language prompts. Do not silently default gate mode or task scale in the fixed flow.
 

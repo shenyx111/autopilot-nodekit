@@ -18,10 +18,11 @@ python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROM
 
 3. If `START_QUESTIONS.md` is produced, stop and ask the user only those missing settings. Do not start the task graph.
 4. After the user answers, write `START_ANSWERS.yml` with `confirmed: true`, then rerun smart-start.
-5. Once the graph exists, follow only:
+5. Once the graph exists, use the background worker and operator for routine progress:
 
 ```bash
-python -m autopilot_nodekit next-command --workspace .
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
 ## Do not silently guess these fields
@@ -53,4 +54,4 @@ python -m autopilot_nodekit background-doctor --workspace .
 python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
-`--max-cycles 0` means unlimited cycles. Do not add wall-clock timeout limits to background workers unless the user explicitly asks.
+`--max-cycles 0` means NodeKit does not set a cycle limit. Do not add wall-clock timeout limits to background workers unless the user explicitly asks.

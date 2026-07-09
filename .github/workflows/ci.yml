@@ -31,6 +31,11 @@ jobs:
             tests/test_bootstrap_v09.py \
             tests/test_shell_safety_v091.py \
             tests/test_smart_start_background.py
+      - name: Test operator automation and scheduling
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          python -m pytest -q tests/test_operator_v092.py
       - name: Test runner control plane core
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'

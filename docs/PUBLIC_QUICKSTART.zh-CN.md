@@ -1,31 +1,7 @@
-# 公开版快速示例
+# 公开版快速入口
 
-一句话触发：
+公开用户请从仓库根目录的 `README.md` 开始。README 里中文在前、英文在后，并提供了一整段可以直接粘贴给 Codex、Claude Code、Cursor 或其他 AI agent 的启动指令。
 
-```text
-基于 autopilot-nodekit 包里的逻辑，完成以下任务：为一个科研项目建立可验证、可恢复、可审计的自动化 loop。
-```
+普通用户通常不需要自己逐条运行 NodeKit 命令。把 README 里的“发给 AI agent 的启动指令”粘贴到 agent 聊天输入框，填写尖括号里的任务、运行方式、输出位置和权限规则，让 agent 按 NodeKit 的任务图、gate、verifier、operator 和恢复流程执行。
 
-典型流程：
-
-```bash
-python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native
-python -m autopilot_nodekit next-command --workspace .
-python -m autopilot_nodekit background-doctor --workspace .
-python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
-python -m autopilot_nodekit background-status --workspace . --worker-id codex-worker
-```
-
-遇到中断：
-
-```bash
-python -m autopilot_nodekit status --workspace .
-python -m autopilot_nodekit next-command --workspace .
-python -m autopilot_nodekit recover-stale --workspace . --run-id <RUN_ID> --mark-failed
-```
-
-如果 repair 通过但父任务仍卡住：
-
-```bash
-python -m autopilot_nodekit resolve-by-repair --workspace . --failed-task-id <FAILED_TASK> --repair-task-id <PASSED_REPAIR_TASK>
-```
+这个文件只保留入口说明，避免和 README 维护两套不同的 quickstart。

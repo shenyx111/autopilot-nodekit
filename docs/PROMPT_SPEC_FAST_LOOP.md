@@ -1,6 +1,6 @@
 # Prompt spec fast loop
 
-v0.7 makes the user's prompt a project specification seed, not the loop controller.
+NodeKit makes the user's prompt a project specification seed, not the loop controller.
 
 ## Minimal prompt
 
@@ -84,10 +84,11 @@ After startup approval:
 
 ```bash
 python -m autopilot_nodekit approve-start --workspace . --summary "Project spec, setup, permissions, task DAG, and fast loop mode reviewed."
-python -m autopilot_nodekit next-command --workspace .
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 
-Then repeat the command printed by `next-command`. For interactive Codex per task, the normal sequence is:
+The background worker and operator should handle routine task execution, repair, stale recovery, and repair resolution. Use `next-command` for diagnosis or supervision. For interactive Codex debugging, the manual sequence is:
 
 ```bash
 python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive
@@ -98,5 +99,5 @@ python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>
 For non-interactive batch use after pilot confidence is established:
 
 ```bash
-python -m autopilot_nodekit worker-loop --workspace . --worker-id codex-worker --max-cycles 100
+python -m autopilot_nodekit worker-loop --workspace . --worker-id codex-worker --max-cycles 0
 ```

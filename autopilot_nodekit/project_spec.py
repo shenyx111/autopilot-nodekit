@@ -164,7 +164,7 @@ def build_figure_project_spec(
             "Each figure has a reproducible script or build command.",
             "PDF/PNG/SVG outputs exist and are non-empty.",
             "Caption, provenance, journal-format notes, and QC evidence are recorded.",
-            "Verifier passes before DONE.",
+            "Verifier passes before the task is complete.",
             "Santa dual-review returns NICE/NICE for every non-human pass.",
             "Final audit passes with no unresolved blockers.",
         ],
@@ -173,7 +173,7 @@ def build_figure_project_spec(
             "Do not mark placeholder figures as complete.",
             "Do not edit raw data in place.",
             "Do not bypass review_pending gates or edit automation/autopilot.sqlite directly.",
-            "Do not mark DONE from LLM self-report without verifier evidence.",
+            "Do not mark a task complete from LLM self-report without verifier evidence.",
         ],
         "permissions": {
             "sandbox": "workspace-write",
@@ -469,8 +469,11 @@ def render_project_spec_review(spec: Dict[str, Any]) -> str:
         "",
         "```bash",
         "python -m autopilot_nodekit start-from-spec --workspace . --spec PROJECT_SPEC.yml --force-codex-native",
-        "python -m autopilot_nodekit next-command --workspace .",
+        "python -m autopilot_nodekit background-doctor --workspace .",
+        "python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0",
         "```",
+        "",
+        "`next-command` is for diagnosis and supervision, not the normal task-by-task button.",
         "",
     ]
     return "\n".join(lines)

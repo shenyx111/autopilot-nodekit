@@ -16,17 +16,17 @@ Use Autopilot NodeKit as the outer loop. Do not create independent unbounded inn
 - Validate graph: `python -m autopilot_nodekit validate --workspace .`
 - Codex-native files: `python -m autopilot_nodekit install-codex-native --workspace .`
 - Generate a native goal: `python -m autopilot_nodekit codex-goal --workspace . --task-id T001`
-- Preferred prompt-to-loop startup: `python -m autopilot_nodekit start-from-prompt --workspace . --prompt-file PROJECT_PROMPT.md --gate-mode fast --force-codex-native`
+- Preferred prompt-to-loop startup: `python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native`
 - AI draft/refine project spec: `python -m autopilot_nodekit codex-draft-spec --workspace . --prompt-file PROJECT_PROMPT.md --gate-mode fast`
 - Start from an explicit spec: `python -m autopilot_nodekit start-from-spec --workspace . --spec PROJECT_SPEC.yml --force-codex-native`
-- Legacy strict figure startup: `python -m autopilot_nodekit start-figures --workspace . --figures 100 --journal "target journal" --gate-mode strict`
+- Strict figure startup: `python -m autopilot_nodekit start-figures --workspace . --figures 100 --journal "target journal" --gate-mode strict`
 - Review Layer 0 setup: read `PROJECT_SETUP.yml` and `SETUP_REVIEW.md`.
 - Approve setup after human review: `python -m autopilot_nodekit approve-setup --workspace .`
 - Review plan: read `GOAL_CONTRACT.md`, `TASK_REVIEW.md`, `REQUIREMENTS_LOCK.md`, and `automation/manifest.live.md`.
 - Approve plan after human review: `python -m autopilot_nodekit approve-plan --workspace .`
-- Prepare one interactive Codex task dialog: `python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive`
-- Finish an interactive Codex task after `worker_result.json` exists: `python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>`
-- Run non-interactive loop: `python -m autopilot_nodekit worker-loop --workspace . --worker-id codex-local`
+- Manual debug handoff only: `python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive`
+- Finish a manual debug handoff after `worker_result.json` exists: `python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>`
+- Run background loop with operator automation: `python -m autopilot_nodekit worker-loop --workspace . --worker-id codex-worker --max-cycles 0`
 
 ## Non-negotiable loop workflow
 
@@ -77,7 +77,7 @@ For debugging, refactoring, benchmarking, reproduction, CI-fix, experiment, or a
 
 Use `python -m autopilot_nodekit codex-goal --workspace . --task-id <ID>` to render a pasteable Codex `/goal` command for a NodeKit task. Codex owns durable `/goal` state inside the active Codex thread; NodeKit owns the external task graph, verifier, review gates, and evidence trail.
 
-For an interactive per-task Codex dialog:
+For a manual interactive per-task Codex dialog used during debugging or pilot review:
 
 1. `python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive`
 2. Run the printed `bash runs/<run_id>/open_codex.sh` command.
@@ -87,7 +87,7 @@ For an interactive per-task Codex dialog:
 Keep progress in `LOOP_STATE.md` or `PLANS.md`. Do not declare success without verifier evidence. If `/goal` is hidden, enable `features.goals = true` in `.codex/config.toml` or run `codex features enable goals`.
 
 
-## v0.8 Smart-start trigger rule
+## Smart-start trigger rule
 
 If the user says any of the following, treat it as an automatic trigger for Autopilot NodeKit startup, even if their prompt is short:
 
@@ -135,10 +135,10 @@ Layer commands:
 
 - Goal/contract: `project-spec-review`, `contract-review`, `codex-contract-goal`
 - Task manifest/DAG: `review-plan`, `validate --strict`, `status`
-- Execution loop: `codex-prepare`, run `runs/<run_id>/open_codex.sh`, `codex-finish`
+- Execution loop: `worker-loop` or `launch-background` with operator automation; use `codex-prepare` / `codex-finish` only for manual interactive debugging
 - Memory/state: `memory-plan`, `memory-search`, `replay-run`
 - Verification: `verify-artifact`, `validate --strict`, verifier logs in `runs/<run_id>/verifier.log`
-- Repair: `add-repair-task`, then `codex-prepare` and `codex-finish`
+- Repair: operator handles routine `add-repair-task`, `resolve-by-repair`, and `recover-stale`; stop for repeated failures or human gates
 - Human gate: `approve-start`, `approve-setup`, `approve-plan`, `approve-pilot`, `approve-task`, `reject-task`
 - Observability: `metrics`, `replay-run`, `automation/events.jsonl`, `automation/manifest.live.md`
 
@@ -165,6 +165,6 @@ Use `.nodekit/nodekit` and `.nodekit/codex_worker.*` wrappers instead of relying
 
 For non-figure science workflows, do not let demo/figure templates drive the project. Prefer an explicit `PROJECT_SPEC.yml` with `project.type` such as `science_workflow`, `materials_dft_sevennet`, `matlantis_workflow`, or `rag_local_llm`, then run `start-from-spec`.
 
-When a repair task passes, use `resolve-by-repair` if the failed parent blocks downstream tasks. Do not keep nesting repair tasks forever.
+When a repair task passes, use `resolve-by-repair` if the failed parent blocks downstream tasks. In unattended runs the operator should handle this automatically. Do not keep nesting repair tasks forever; repeated repair failures must pause for human review.
 
 For detached/background runs, do not mechanically run `codex-finish` while the child worker may still be alive. Use `background-status`, `events.jsonl`, heartbeat files, and `recover-stale` if the run is abandoned.

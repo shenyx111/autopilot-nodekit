@@ -13,9 +13,11 @@ python -m pytest -q
 Please keep PRs focused. This project is a control plane, so changes should preserve:
 
 - tasks should only be marked done after their verifier passes;
-- failed tasks should go through the repair flow instead of being silently retried;
+- failed tasks should go through the repair/operator flow instead of being silently retried;
+- routine repair, stale recovery, and repair resolution should remain automatic unless a human gate or safety rule blocks them;
+- mainline-ready work should not be preempted by historical failed repair branches that no longer block the active frontier;
 - important outputs and evidence should remain traceable in `runs/` and `automation/events.jsonl`;
-- Windows, Linux, and macOS behavior should be explicit when a change touches shell commands, paths, or background workers;
+- Windows, Linux, and macOS behavior should be explicit when a change touches shell commands, paths, scheduling, or background workers;
 - private data, logs, credentials, local databases, and real run directories should not be committed.
 
 For changes affecting background workers, include a short note about Linux/macOS/Windows behavior.

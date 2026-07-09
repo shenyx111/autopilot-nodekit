@@ -62,6 +62,28 @@ def test_next_command_does_not_finish_background_run_without_result(tmp_path: Pa
         db.close()
 
 
+def test_lease_seconds_zero_means_no_expiry(tmp_path: Path) -> None:
+    paths = workspace_paths(tmp_path)
+    paths["automation"].mkdir(parents=True)
+    manifest = {"tasks": [{"id": "T001", "title": "long", "objective": "run", "success_criteria": "ok"}]}
+    dump_yaml(paths["manifest"], manifest)
+    dump_yaml(paths["config"], {"worker": {"agent": "codex-cli", "command": "echo ok"}})
+    db = AutoDB(paths["db"])
+    db.init_schema()
+    try:
+        import_manifest(db, paths["manifest"])
+        claim = db.claim_ready_task("codex-worker", lease_seconds=0)
+        assert claim is not None
+        task, _ = claim
+        assert task["status"] == "running"
+        assert task["lease_until"] is None
+        db.refresh_ready_tasks()
+        assert db.get_task("T001")["status"] == "running"
+        assert db.claim_ready_task("second-worker", lease_seconds=0) is None
+    finally:
+        db.close()
+
+
 def test_resolve_by_repair_rewires_downstream_and_supersedes_failed_parent(tmp_path: Path) -> None:
     paths = workspace_paths(tmp_path)
     paths["automation"].mkdir(parents=True)
@@ -88,3 +110,15 @@ def test_resolve_by_repair_rewires_downstream_and_supersedes_failed_parent(tmp_p
         assert [e["to_task"] for e in edges] == ["T001_REPAIR_01"]
     finally:
         db.close()
+
+
+def test_codex_native_generated_text_has_current_public_guidance(tmp_path: Path) -> None:
+    from autopilot_nodekit.codex_native import install_codex_native_files
+
+    install_codex_native_files(tmp_path, force=True)
+    generated = [tmp_path / "AGENTS.md", *sorted((tmp_path / ".agents" / "skills").glob("**/SKILL.md"))]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in generated)
+    assert "v0." + "7" not in text
+    assert "v0." + "8" not in text
+    assert "verifier-" + "authoritative " + "DO" + "NE" not in text
+    assert "launch-background --workspace . --worker-id codex-worker --max-cycles 0" in text
