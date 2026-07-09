@@ -1,6 +1,6 @@
 # Autopilot NodeKit v0.9.3
 
-[中文](#中文) | [English](#english)
+[中文](#中文) | [日本語](#日本語) | [English](#english)
 
 ## 中文
 
@@ -161,6 +161,172 @@ Slurm 输出
 ### 本地验证
 
 如果你修改了这个包，或者准备重新发布到 GitHub，建议先做本地验证。下面这些命令要在 NodeKit 包根目录运行，也就是包含 `pyproject.toml`、`autopilot_nodekit/` 和 `tests/` 的文件夹。
+
+```bash
+python -m pip install -e ".[dev]"
+python -m compileall -q autopilot_nodekit tests
+python -m pytest -q
+```
+
+## 日本語
+
+Autopilot NodeKit は、Codex、Claude Code、Cursor などの AI agent が長いタスクを扱いやすくするための、オープンソースの loop engineering ツールキットです。作業を復旧可能、検証可能、監査可能なタスクグラフに分けます。バックグラウンド worker が実行を担当し、operator が通常の repair / recover / resolve を処理します。ユーザーは判断が必要な場面だけ介入します。
+
+目標はシンプルです。ユーザーを next-command ボタンにしないことです。
+
+向いている用途：
+
+- 研究 notebook、Matlantis、ASE ワークフロー；
+- VASP、DFT、SevenNet のデータ生成や fine-tuning；
+- COMSOL のパラメータスイープ、シミュレーション一括実行、結果整理など、AI が制御できる有限要素計算；
+- RAGFlow + ローカル LLM の知識ベース；
+- バッチデータ処理、論文図の生成、長いコード修正；
+- 長時間実行、途中再開、証拠保存が必要な多段階プロジェクト。
+
+### v0.9.3 の要点
+
+v0.9.3 の主な変更は三つです。
+
+1. `worker-loop` はデフォルトで operator/supervisor を含みます。バックグラウンド worker に ready task がない場合、operator が通常の制御面処理を行えます。
+2. repair、recovery、repair resolution は、ユーザーの手動リマインドに頼らない形になりました。通常の failed task、passed repair、stale run、下流タスクの解放は自動で進みます。
+3. mainline-first scheduling guard を追加しました。現在の主線をもうブロックしていない過去の failed repair は証拠として残りますが、主線の ready task より優先されません。
+
+デフォルトの動き：
+
+```text
+ready task -> バックグラウンド worker が実行
+failed task -> operator が repair task を追加
+passed repair -> operator が resolve-by-repair を実行
+stale run -> operator が recover-stale を実行
+mainline released -> 次の ready task を自動で claim
+```
+
+NodeKit は human gate、危険な操作、高価な計算、ファイル削除、認証情報の使用、リモートリポジトリ変更を自動承認しません。
+
+### AI agent に渡す起動指示
+
+下のブロック全体を Codex、Claude Code、Cursor などの AI agent のチャット入力欄に貼り付けてください。山括弧の中だけを書き換えます。ブロックを分けたり、コマンドを自分で一つずつターミナルに入力したりする必要はありません。
+
+```text
+あなたは Autopilot NodeKit を使ってこのプロジェクトを進めます。このパッケージに含まれる手順に従って管理してください。別の計画を勝手に作らず、タスクグラフ、gate、verifier、repair flow、operator、recovery steps を飛ばさないでください。
+
+私のタスク：
+<やりたいこと、入力ファイルの場所、期待する出力、最終結果を保存する場所、制約を書いてください。>
+
+実行方式：
+<「まず前面で流れを確認する」または「バックグラウンドで継続実行する」と書いてください。バックグラウンド実行の場合は、NodeKit の background check と background worker の起動をあなたが実行してください。ユーザーはこれらのコマンドを手動実行しません。worker-id は codex-worker、max-cycles は 0 にしてください。>
+
+最終出力の保存先：
+<例：outputs/final/。完了後、主要な結果ファイルの正確なパスを教えてください。>
+
+権限ルール：
+<自動で実行してよいこと、先に確認が必要なことを書いてください。例：プロジェクトファイルの読み取り、ローカルファイル整理、テスト実行、中間結果生成は自動でよい；大量の削除や上書き、高価な計算、外部有料サービス、認証情報、リモートリポジトリ変更、個人情報や非公開データ、最終納品の承認は先に確認してください。>
+
+まず Autopilot NodeKit を解凍してインストールしてください。次に対象 workspace に入り、上のタスク情報から PROJECT_PROMPT.md を作成または確認し、smart-start を実行してください。
+
+情報が不足している場合は START_QUESTIONS.md を作成して、先に私に質問してください。確認後に続けてください。
+
+その後は NodeKit の background worker と operator に進行を任せてください。通常の repair、resolve-by-repair、recover-stale、status、validate、background-status では毎回私に聞かないでください。
+
+human gate、危険な操作、高価な計算、連続失敗、復旧できない worker 問題、final audit のときだけ止まって通知してください。
+
+完了したら、最終結果がどこにあるかを正確なパスで教えてください。
+```
+
+### Agent が使う主なコマンド
+
+通常のユーザーがこれらを手動で実行する必要はほとんどありません。agent や開発者が流れを確認できるように載せています。
+
+インストール：
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+プロジェクト開始：
+
+```bash
+python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native
+```
+
+バックグラウンドで継続実行：
+
+```bash
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
+```
+
+`--max-cycles 0` は NodeKit 側でサイクル数の上限を設けないという意味です。gate、エラー、外部制限に当たるまで反復します。
+
+### Agent がユーザーに確認すべき場面
+
+通常のバックグラウンド実行では、agent が小さなタスクごとに質問する必要はありません。質問すべき場面は主に次の通りです。
+
+- startup gate、pilot gate、final audit；
+- パス、権限、アカウント、認証情報が不明な場合；
+- 多数のファイルを削除または上書きする場合；
+- Slurm、DFT、COMSOL、クラウドサービスなど、高価な計算や外部システムを動かす場合；
+- 同じ問題の repair が安全深度を超えて失敗する場合；
+- worker が自動復旧できない場合；
+- verifier または Santa が重大なリスクを検出した場合。
+
+通常の passed task、repair task、resolve-by-repair、recover-stale でユーザーを中断しないでください。
+
+### 中断後に agent へ伝えること
+
+ウィンドウが閉じた、token が尽きた、worker が終了した、といった場合でも、ユーザーが復旧コマンドを手動実行する必要はありません。agent を開き直して、次を貼り付けてください。
+
+```text
+この Autopilot NodeKit プロジェクトを復旧してください。最初からやり直さないでください。
+
+まず現在の workspace にある NodeKit の状態を読み取ってください。background worker、プロジェクト状態、次のタスクを確認してください。NodeKit の status、background-status、next-command、operator logic を使って、どこから続けるべきか判断してください。
+
+run が長時間 running のままなら、NodeKit の recover-stale logic で処理してください。
+
+repair task が passed なのに親 task が failed のままなら、NodeKit の resolve-by-repair logic で処理してください。
+
+復旧中に run records を削除しないでください。gate を飛ばさないでください。プロジェクト全体を再計画しないでください。完了後、どこで止まっていたか、どんな復旧処理をしたか、次に何をするかを教えてください。
+```
+
+### 結果の保存場所
+
+最終結果の場所はタスクによって変わります。起動指示の「最終出力の保存先」で指定するのがおすすめです。
+
+```text
+最終結果は outputs/final/ に保存し、完了後に主要ファイルのパスを教えてください。
+```
+
+指定がない場合、agent は開始時に確認するか、`outputs/`、`results/`、`reports/` のようなプロジェクト内ディレクトリを使うべきです。`runs/` は NodeKit の証拠とタスク記録であり、最終納品物そのものとは限りません。
+
+### Shell safety
+
+verifier はファイルの存在、テスト通過、出力生成などの読み取り専用チェックだけを行うべきです。次のようなコマンドを verifier に隠さないでください。
+
+```text
+sbatch / srun / scancel / qsub / qdel / rm -rf / backtick command substitution / $(...)
+```
+
+NodeKit は verifier と startup checks に shell-safety lint をかけます。Slurm、COMSOL、DFT、クラウドサービス呼び出し、ファイル削除は明示的な task として実行し、human gate または resource gate を通してください。
+
+### GitHub に公開しないもの
+
+クラウド AI agent や、外部サービスに文脈を送るモデルを使う場合、実際の実行データや非公開情報を渡さないことをおすすめします。リポジトリにもコミットしないでください。
+
+```text
+runs/
+logs/
+automation/autopilot.sqlite
+memory/nodes/
+START_ANSWERS.yml
+.env*
+API keys
+Slurm outputs
+private source data
+```
+
+### ローカル検証
+
+このパッケージを変更した場合や GitHub に公開する前には、NodeKit パッケージのルートで検証してください。つまり `pyproject.toml`、`autopilot_nodekit/`、`tests/` があるフォルダです。
 
 ```bash
 python -m pip install -e ".[dev]"
