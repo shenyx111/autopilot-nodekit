@@ -6,7 +6,7 @@
 2. Keep it private until you review the release contents.
 3. Push this directory as the initial commit.
 4. Confirm CI passes.
-5. Review `README.md`, `SECURITY.md`, and `LICENSE`.
+5. Review `README.md`, `SECURITY.md`, `LICENSE`, and `docs/release/`.
 6. Switch repository visibility to public when ready.
 
 ## Local publish commands
