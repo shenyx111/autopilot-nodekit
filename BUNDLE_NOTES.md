@@ -1,6 +1,6 @@
 # Bundle notes — v0.9.1
 
-This bundle is the hardened successor to v0.8.0. It keeps smart-start and background-aware Codex execution, includes the v0.9.0 bootstrap/background hardening work, and adds the v0.9.1 shell-safety checks. The main problems addressed in real use were:
+This v0.9.1 bundle focuses on GitHub-ready, long-running Codex execution. It includes smart-start, background-aware execution, bootstrap/background hardening, and shell-safety checks. The main problems addressed in real use were:
 
 - demo/figure template contamination in non-figure projects;
 - Windows `/bin/sh` and PowerShell redirect issues;

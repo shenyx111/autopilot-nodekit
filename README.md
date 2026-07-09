@@ -4,16 +4,17 @@
 
 ## 中文
 
-Autopilot NodeKit 是给 Codex 用的本地长期任务控制层。它把一个目标拆成项目规范、目标契约、任务图、验证规则、后台 loop、失败修复和最终审计，让复杂任务能跨窗口、跨进程继续推进。
+Autopilot NodeKit 是给 Codex 长时间干活用的本地控制层。你给它一个目标，它会把项目说明、完成标准、任务图、验证规则、后台执行、失败修复和最终审计都落到 workspace 里。就算换窗口、进程重启，任务也能接着往下走。
 
-v0.9.1 是面向 GitHub 发布整理的开源包。它保留 v0.8 的 smart-start 启动方式，并补上启动和后台运行里最容易卡住的部分：非图稿科研工作流模板、`.nodekit` 运行包装器、后台后端烟测、heartbeat 日志、stale run 恢复、repair 通过后的图释放命令，以及 verifier/bootstrap shell-safety lint。
+这个 v0.9.1 包可以直接放到 GitHub。它带好 smart-start、后台 worker、运行包装器、后台烟测、heartbeat 日志、stale run 恢复、repair 通过后的图释放命令，以及 verifier/bootstrap 的 shell-safety lint。
 
-状态：experimental but usable。先用小项目或 smoke run 试跑，再交给昂贵计算或大批量任务。
+状态：experimental but usable。建议先从小项目或 smoke run 开始，再交给昂贵计算或大批量任务。
 
 ### 它适合什么任务
 
 - 科研 notebook、Matlantis、ASE 工作流；
 - VASP、DFT、SevenNet 数据生成和 fine-tuning；
+- AI 可控的有限元计算，例如 COMSOL 参数扫描、仿真批处理和结果整理；
 - RAGFlow + 本地 LLM 知识库；
 - 批量论文图、数据处理、代码修复；
 - 需要长时间运行、断点续跑、保留证据的多阶段项目。
@@ -69,6 +70,41 @@ START_ANSWERS.yml.template
 ```bash
 python -m autopilot_nodekit next-command --workspace .
 ```
+
+### 给 AI agent 的启动提示
+
+如果你把这个 zip 交给 Codex、Claude Code、Cursor 或其他 AI agent，可以直接给它这段话：
+
+```text
+请解压 autopilot-nodekit-v0.9.1-open-source-github.zip，进入解压后包含 pyproject.toml 的目录。
+用 Python 3.10+ 安装这个工具包：
+
+python -m pip install -e ".[dev]"
+
+然后进入我要自动化的项目 workspace，创建 PROJECT_PROMPT.md，写清楚目标、输入数据、输出要求、限制条件和哪些步骤需要先问我。
+运行：
+
+python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native
+
+如果生成 START_QUESTIONS.md，请先让我回答。把答案写进 START_ANSWERS.yml，并设置 confirmed: true，再重新运行 smart-start。
+
+之后用下面这个命令查看下一步：
+
+python -m autopilot_nodekit next-command --workspace .
+
+请按 NodeKit 给出的任务图、gate 和 verifier 继续执行。遇到 startup gate、资源 gate、昂贵计算、权限不清楚或 final audit 时先停下来问我。
+```
+
+### 第一次运行后会发生什么
+
+第一次 `smart-start` 会先判断信息够不够：
+
+- 信息够用时，它会写入 `PROJECT_SPEC.yml`、`GOAL_CONTRACT.yml`、`automation/manifest.yml` 和第一批任务；
+- 信息不够时，它会生成 `START_QUESTIONS.md` 和 `START_ANSWERS.yml.template`，等你补完答案再继续；
+- `next-command` 会告诉 agent 当前应该执行哪一步，以及需要留下哪些证据；
+- 后台模式会生成 `.nodekit/`、`automation/events.jsonl`、heartbeat 文件和日志；
+- verifier 只应该做只读检查。Slurm、COMSOL 批处理、DFT 提交、删除文件这类高风险动作会被 gate 或 shell-safety lint 拦住；
+- 如果窗口关了、token 用完了或 worker 中断，可以用 `status`、`next-command` 和 `recover-stale` 接着恢复。
 
 ### 后台连续运行
 
@@ -211,9 +247,9 @@ python -m pytest -q
 
 ## English
 
-Autopilot NodeKit is a small local control plane for long-running Codex workflows. It turns a broad request into a project spec, goal contract, task graph, verifier rules, background loop, repair path, durable memory, and final audit.
+Autopilot NodeKit is a local control layer for long-running Codex work. You give it a goal, and it keeps the project spec, done criteria, task graph, verifier rules, background execution, repair path, durable memory, and final audit in the workspace. If the Codex session changes or a worker restarts, the project still has enough state to continue.
 
-v0.9.1 is packaged for GitHub publication. It keeps the v0.8 smart-start flow and hardens the startup and background path: non-figure research workflow templates, `.nodekit` runtime wrappers, backend smoke checks, heartbeat logs, stale-run recovery, repair-based graph release, and verifier/bootstrap shell-safety lint.
+This v0.9.1 package is ready to put in a GitHub repository. It includes smart start, background workers, runtime wrappers, backend smoke checks, heartbeat logs, stale-run recovery, repair-based graph release, and verifier/bootstrap shell-safety lint.
 
 Status: experimental but usable. Start with a small project or smoke run before trusting it with expensive compute.
 
@@ -221,6 +257,7 @@ Status: experimental but usable. Start with a small project or smoke run before 
 
 - Research notebooks, Matlantis, and ASE workflows.
 - VASP, DFT, SevenNet data generation, and fine-tuning pipelines.
+- AI-controllable finite-element workflows, such as COMSOL parameter sweeps, simulation batches, and result collection.
 - RAGFlow + local LLM knowledge bases.
 - Batch figure generation, data processing, and code repair.
 - Long-running staged projects that need recovery and evidence.
@@ -276,6 +313,41 @@ Then use one control command:
 ```bash
 python -m autopilot_nodekit next-command --workspace .
 ```
+
+### Prompt for an AI agent
+
+If you give this zip to Codex, Claude Code, Cursor, or another AI agent, you can paste this instruction:
+
+```text
+Unzip autopilot-nodekit-v0.9.1-open-source-github.zip, then enter the extracted folder that contains pyproject.toml.
+Install the toolkit with Python 3.10+:
+
+python -m pip install -e ".[dev]"
+
+Then go to the project workspace I want to automate. Create PROJECT_PROMPT.md with the goal, input data, output requirements, constraints, and any steps that should ask me first.
+Run:
+
+python -m autopilot_nodekit smart-start --workspace . --prompt-file PROJECT_PROMPT.md --force-codex-native
+
+If START_QUESTIONS.md is created, ask me for answers first. Write them into START_ANSWERS.yml, set confirmed: true, and rerun smart-start.
+
+After that, use this command to see the next step:
+
+python -m autopilot_nodekit next-command --workspace .
+
+Continue by following the NodeKit task graph, gates, and verifiers. Stop and ask me at startup gates, resource gates, expensive compute steps, unclear permissions, and final audit.
+```
+
+### What happens after the first run
+
+The first `smart-start` checks whether the project has enough information:
+
+- If it has enough, NodeKit writes `PROJECT_SPEC.yml`, `GOAL_CONTRACT.yml`, `automation/manifest.yml`, and the first task batch.
+- If details are missing, NodeKit creates `START_QUESTIONS.md` and `START_ANSWERS.yml.template`, then waits for confirmed answers.
+- `next-command` tells the agent what to do next and what evidence to leave behind.
+- Background mode creates `.nodekit/`, `automation/events.jsonl`, heartbeat files, and logs.
+- Verifiers should stay read-only. High-risk actions such as Slurm jobs, COMSOL batches, DFT submission, and file deletion are routed through gates or blocked by shell-safety lint.
+- If a window closes, tokens run out, or a worker stops, use `status`, `next-command`, and `recover-stale` to continue.
 
 ### Background loop
 
