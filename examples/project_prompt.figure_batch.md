@@ -20,4 +20,4 @@ Never fabricate data. Never mark placeholders complete. Never modify raw data in
 Use fast gate mode. Minimize human stops while preserving startup approval, boundary testing, verifier authority, Santa review, repair tasks, and final audit.
 
 # Task scale
-standard
+task_scale: standard

@@ -11,6 +11,8 @@ from .project_spec import (
     extract_project_name,
     infer_project_spec_from_prompt,
     normalize_gate_mode,
+    detect_project_type,
+    extract_artifact_count,
 )
 from .util import dump_yaml, load_yaml, read_text, write_text
 
@@ -133,13 +135,15 @@ def analyze_start_prompt(
     resolved: Dict[str, Any] = {}
     warnings: List[Dict[str, Any]] = []
 
-    resolved["artifact_count"] = first_present(figures, answers.get("artifact_count"), extract_figure_count(prompt))
+    resolved["project_type"] = first_present(answers.get("project_type"), detect_project_type(prompt))
+    is_figure_project = resolved["project_type"] == "journal_figures"
+    resolved["artifact_count"] = first_present(figures, answers.get("artifact_count"), extract_figure_count(prompt) if is_figure_project else extract_artifact_count(prompt))
     resolved["target_journal"] = first_present(journal, answers.get("target_journal"), answers.get("journal"), extract_journal(prompt))
     resolved["gate_mode"] = first_present(gate_mode, answers.get("gate_mode"), extract_gate_mode(prompt))
     resolved["task_scale"] = first_present(task_scale, answers.get("task_scale"), extract_task_scale(prompt))
-    resolved["project_name"] = first_present(project_name, answers.get("project_name"), extract_project_name(prompt), "prompt-derived-figure-project")
+    resolved["project_name"] = first_present(project_name, answers.get("project_name"), extract_project_name(prompt), "prompt-derived-figure-project" if is_figure_project else "prompt-derived-workflow-project")
     resolved["data_dir"] = first_present(data_dir, answers.get("data_dir"), extract_data_dir(prompt), "data")
-    resolved["output_dir"] = first_present(output_dir, answers.get("output_dir"), extract_output_dir(prompt), "outputs/figures")
+    resolved["output_dir"] = first_present(output_dir, answers.get("output_dir"), extract_output_dir(prompt), "outputs/figures" if is_figure_project else "outputs/workflow")
     resolved["deliverables"] = answers.get("deliverables") or ["pdf", "png", "svg", "plotting_script", "caption", "qc_report"]
 
     missing: List[Dict[str, Any]] = []
@@ -176,8 +180,10 @@ def analyze_start_prompt(
         except Exception:
             missing.append(question("artifact_count", "artifact_count 不是有效整数，请给出明确数量。", None, 1))
 
-    if not resolved["target_journal"]:
+    if is_figure_project and not resolved["target_journal"]:
         missing.append(question("target_journal", "目标期刊/格式规范是什么？例如 Nature / Science / ACS Nano。", None, "target journal"))
+    elif not is_figure_project and not resolved["target_journal"]:
+        resolved["target_journal"] = "not_applicable"
 
     if not prompt_mentions_deliverables(prompt) and not answers.get("deliverables_confirmed"):
         warnings.append(
@@ -226,9 +232,10 @@ def write_start_questions(workspace: Path, analysis: StartAnalysis) -> None:
         "gate_mode": "",
         "task_scale": "",
         "artifact_count": None,
+        "project_type": analysis.resolved.get("project_type", "science_workflow"),
         "target_journal": "",
         "data_dir": analysis.resolved.get("data_dir", "data"),
-        "output_dir": analysis.resolved.get("output_dir", "outputs/figures"),
+        "output_dir": analysis.resolved.get("output_dir", "outputs/workflow"),
         "deliverables": analysis.resolved.get("deliverables") or ["pdf", "png", "svg", "plotting_script", "caption", "qc_report"],
         "deliverables_confirmed": False,
     }
@@ -296,8 +303,13 @@ def build_spec_from_resolved(prompt: str, resolved: Dict[str, Any]) -> Dict[str,
         gate_mode=str(resolved["gate_mode"]),
     )
     spec.setdefault("planning", {})["task_scale"] = task_scale
-    spec["planning"]["task_scale_description"] = TASK_SCALE_DESCRIPTIONS[task_scale]
-    spec["planning"]["startup_policy"] = "Always generate PROJECT_PROMPT.md, PROJECT_SPEC.yml, Goal Contract, Task Manifest, and start questions before execution. Missing gate_mode/task_scale/artifact_count/journal must be answered before start."
+    if spec.get("project", {}).get("type") == "journal_figures":
+        spec["planning"]["task_scale_description"] = TASK_SCALE_DESCRIPTIONS[task_scale]
+        missing_note = "gate_mode/task_scale/artifact_count/journal"
+    else:
+        spec["planning"]["task_scale_description"] = "smoke=2 tasks/artifact; standard=3 tasks/artifact; prod=4 tasks/artifact with a separate validation step"
+        missing_note = "gate_mode/task_scale/artifact_count/project_type"
+    spec["planning"]["startup_policy"] = f"Always generate PROJECT_PROMPT.md, PROJECT_SPEC.yml, Goal Contract, Task Manifest, and start questions before execution. Missing {missing_note} must be answered before start."
     spec.setdefault("outputs", {})["deliverables"] = resolved.get("deliverables") or spec.get("outputs", {}).get("per_figure", [])
     spec.setdefault("background", {})["timeout_policy"] = "No background worker timeout is imposed by NodeKit defaults; worker-loop can run with --max-cycles 0 for unlimited cycles."
     return spec

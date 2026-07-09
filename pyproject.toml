@@ -1,10 +1,24 @@
 [project]
 name = "autopilot-nodekit"
-version = "0.8.0"
-description = "A Codex-native durable task graph + non-lossy memory control plane for long-running coding loops."
+version = "0.9.1"
+description = "A hardened Codex-native durable task graph + background loop control plane for long-running research workflows."
 readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Autopilot NodeKit contributors" }]
 requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0.2"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Scientific/Engineering",
+]
 
 [project.scripts]
 autopilot-nodekit = "autopilot_nodekit.cli:main"

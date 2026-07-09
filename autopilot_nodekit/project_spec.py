@@ -51,17 +51,30 @@ def infer_project_spec_from_prompt(
     gate_mode: str = "fast",
 ) -> Dict[str, Any]:
     gate_mode = normalize_gate_mode(gate_mode)
-    inferred_figures = figures or extract_figure_count(prompt) or 1
-    inferred_journal = journal or extract_journal(prompt) or "target journal"
-    inferred_name = project_name or extract_project_name(prompt) or "prompt-derived-figure-project"
-    return build_figure_project_spec(
+    kind = detect_project_type(prompt)
+    inferred_name = project_name or extract_project_name(prompt) or ("prompt-derived-figure-project" if kind == "journal_figures" else "prompt-derived-workflow-project")
+    if kind == "journal_figures":
+        inferred_figures = figures or extract_figure_count(prompt) or 1
+        inferred_journal = journal or extract_journal(prompt) or "target journal"
+        return build_figure_project_spec(
+            project_name=inferred_name,
+            figure_count=inferred_figures,
+            journal=inferred_journal,
+            output_dir=output_dir,
+            data_dir=data_dir,
+            script_dir=script_dir,
+            tasks_per_figure=tasks_per_figure,
+            gate_mode=gate_mode,
+            source_prompt_excerpt=prompt.strip()[:4000],
+        )
+    artifact_count = figures or extract_artifact_count(prompt) or 4
+    return build_workflow_project_spec(
         project_name=inferred_name,
-        figure_count=inferred_figures,
-        journal=inferred_journal,
-        output_dir=output_dir,
+        project_type=kind,
+        artifact_count=artifact_count,
+        output_dir=output_dir if output_dir != "outputs/figures" else "outputs/workflow",
         data_dir=data_dir,
-        script_dir=script_dir,
-        tasks_per_figure=tasks_per_figure,
+        tasks_per_artifact=tasks_per_figure,
         gate_mode=gate_mode,
         source_prompt_excerpt=prompt.strip()[:4000],
     )
@@ -202,6 +215,146 @@ def normalize_gate_mode(mode: str | None) -> str:
     return mode
 
 
+
+def detect_project_type(prompt: str) -> str:
+    lower = prompt.lower()
+    explicit_no_figure_template = bool(re.search(r"不要用期刊图模板|不要.*figure template|not.*figure template|非.*期刊图", lower))
+    # Figure projects are common and should not be stolen by incidental words like
+    # "workflow" or substrings such as "dify" inside "modify". But an explicit
+    # anti-template instruction must win.
+    if not explicit_no_figure_template and (extract_figure_count(prompt) or re.search(r"publication[- ]ready\s*(figure|figures|plot|plots)|期刊图|论文图", lower)):
+        return "journal_figures"
+    if re.search(r"\bragflow\b|\brag[- ]?based\b|\blocal[- ]?llm\b|knowledge base|知识库|数据库|\bdify\b|\bopenwebui\b", lower):
+        return "rag_local_llm"
+    if re.search(r"\bsevennet\b|\b7net\b|\bvasp\b|\bdft\b|\bslurm\b|\bmlip\b|fine[- ]?tuning|fine tuning|势能|机器学习势", lower):
+        return "materials_dft_sevennet"
+    if re.search(r"\bmatlantis\b|\bnotebook\b|\base\b|\bneb\b|\bmd\b|moo3|mos2|材料计算|工作流", lower):
+        return "matlantis_workflow"
+    return "science_workflow"
+
+
+def extract_artifact_count(prompt: str) -> Optional[int]:
+    # Prefer explicit artifact/count wording for generic workflows; otherwise use 4 stages.
+    patterns = [
+        r"(?:artifact_count|artifacts|workflow stages|stages|任务阶段|阶段数)\s*[:：=]?\s*(\d{1,4})",
+        r"(\d{1,4})\s*(?:个|项)?\s*(?:artifact|artifacts|workflow stages|stages|阶段)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, prompt, flags=re.IGNORECASE)
+        if m:
+            try:
+                n = int(m.group(1))
+                if n > 0:
+                    return n
+            except Exception:
+                pass
+    return None
+
+
+def build_workflow_project_spec(
+    *,
+    project_name: str,
+    project_type: str,
+    artifact_count: int = 4,
+    output_dir: str = "outputs/workflow",
+    data_dir: str = "data",
+    tasks_per_artifact: int = 3,
+    gate_mode: str = "balanced",
+    source_prompt_excerpt: str = "",
+) -> Dict[str, Any]:
+    if artifact_count < 1:
+        artifact_count = 4
+    if tasks_per_artifact not in {2, 3, 4}:
+        raise ValueError("tasks_per_artifact must be 2, 3, or 4")
+    gate_mode = normalize_gate_mode(gate_mode)
+    stage_names = default_stage_names(project_type, artifact_count)
+    gate_extra = 5 if gate_mode == "strict" else 4 if gate_mode == "balanced" else 3
+    return {
+        "version": 1,
+        "source": {
+            "kind": "prompt_derived_project_spec",
+            "generator": "autopilot_nodekit.project_spec.infer_project_spec_from_prompt",
+            "prompt_excerpt": source_prompt_excerpt,
+        },
+        "project": {
+            "name": project_name,
+            "type": project_type,
+            "artifact_kind": "workflow_stage",
+            "artifact_count": artifact_count,
+            "goal": f"Build a verifier-backed {project_type} workflow package with auditable evidence and repair loops.",
+        },
+        "planning": {
+            "tasks_per_artifact": tasks_per_artifact,
+            "tasks_per_figure": tasks_per_artifact,
+            "task_scale": TASKS_PER_FIGURE_TO_SCALE.get(tasks_per_artifact, "standard"),
+            "minimum_task_count": artifact_count * tasks_per_artifact + gate_extra,
+            "gate_mode": gate_mode,
+            "manual_gate_policy": {
+                "manual_gates": ["G000_START_REVIEW"] + (["H020_PILOT_REVIEW"] if gate_mode == "balanced" else []),
+                "meaning": "Workflow/science project: approve startup, run boundary/bootstrap test, optionally review first stage, then keep background loop running.",
+            },
+            "stage_names": stage_names,
+            "demo_quarantine": "Exclude demo/sample/template/test-fixture content unless explicitly approved by the user.",
+        },
+        "inputs": {"data_dir": data_dir, "missing_input_policy": "Block or insert source-discovery task; never fabricate data or labels."},
+        "outputs": {"output_dir": output_dir, "workflow_stage_dirs": [f"tasks/F{i:03d}" for i in range(1, artifact_count + 1)]},
+        "definition_of_done": [
+            "Every workflow stage has input_files, expected_outputs, done_when, and verifier or documented blocking reason.",
+            "No demo/template artifact is treated as a real deliverable.",
+            "Background worker bootstrap checks pass before business tasks.",
+            "Verifier evidence and Santa NICE/NICE exist for each non-human pass.",
+            "Final audit passes with no unresolved blockers.",
+        ],
+        "forbidden": [
+            "Do not use figure/demo defaults unless the project is explicitly a figure batch.",
+            "Do not fabricate scientific data, DFT labels, notebook results, or RAG answers.",
+            "Do not launch duplicate background workers.",
+            "Do not submit external jobs unless the task contract permits it and required gates passed.",
+        ],
+        "permissions": {
+            "sandbox": "workspace-write",
+            "approval_policy": "on-request",
+            "read_allow": [".", data_dir, "project_memory", "automation", "memory", "runs", "tasks"],
+            "write_allow": [output_dir, "tasks", "project_memory", "logs/raw", "runs", "memory/nodes", "automation"],
+            "write_deny": [".git", "automation/autopilot.sqlite"],
+        },
+        "codex_native": {"required_files": ["AGENTS.md", ".agents/skills", ".codex/config.toml", ".codex/agents", ".codex/hooks.json", ".nodekit"]},
+        "verification": {"authoritative": True, "default_commands": ["python -m autopilot_nodekit background-doctor --workspace . --json", "python -m autopilot_nodekit validate --workspace . --strict"]},
+        "repair_policy": {"max_iterations_per_task": 4, "use_resolve_by_repair": True, "stale_recovery": "Use recover-stale for abandoned running tasks."},
+    }
+
+
+def default_stage_names(project_type: str, artifact_count: int) -> List[str]:
+    presets = {
+        "matlantis_workflow": [
+            "literature and structure source registry plus physical contract",
+            "structure builders, validators, and structure_validation_report framework",
+            "main Matlantis notebook, helper modules, and CALCULATION_MATRIX",
+            "dry-run smoke tests, verifier, full-run plan, and final audit package",
+        ],
+        "materials_dft_sevennet": [
+            "capability audit for SevenNet/VASP/Slurm/runtime",
+            "original large-model audit and local-environment coverage plan",
+            "reduced-model candidate generation and validation",
+            "DFT input matrix, SevenNet dataset conversion, and fine-tuning plan",
+        ],
+        "rag_local_llm": [
+            "RAGFlow deployment and local service health",
+            "API capability and authentication probing",
+            "dataset design, source allowlist, and ingestion route plan",
+            "retrieval QA evaluation, repair plan, and final audit package",
+        ],
+    }
+    names = list(presets.get(project_type, [])) or [
+        "source registry and contract",
+        "builders and validators",
+        "main workflow implementation",
+        "smoke tests and final audit plan",
+    ]
+    while len(names) < artifact_count:
+        names.append(f"additional workflow stage {len(names)+1}")
+    return names[:artifact_count]
+
 def extract_figure_count(prompt: str) -> Optional[int]:
     patterns = [
         r"(\d{1,5})\s*(?:个|張|张)?\s*(?:期刊|论文|paper|journal)?\s*(?:图|圖|figure|figures|figs|plots)",
@@ -262,6 +415,23 @@ def spec_to_figure_plan_kwargs(spec: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def spec_to_workflow_plan_kwargs(spec: Dict[str, Any]) -> Dict[str, Any]:
+    project = spec.get("project", {}) or {}
+    planning = spec.get("planning", {}) or {}
+    outputs = spec.get("outputs", {}) or {}
+    return {
+        "artifact_count": int(project.get("artifact_count") or 4),
+        "project_name": str(project.get("name") or "prompt-derived-workflow-project"),
+        "project_type": str(project.get("type") or "science_workflow"),
+        "goal": str(project.get("goal") or "Build a verifier-backed workflow package."),
+        "output_dir": str(outputs.get("output_dir") or outputs.get("figure_dir") or "outputs/workflow"),
+        "tasks_per_artifact": int(planning.get("tasks_per_artifact") or planning.get("tasks_per_figure") or 3),
+        "gate_mode": normalize_gate_mode(planning.get("gate_mode") or "balanced"),
+        "stage_names": list(planning.get("stage_names") or []),
+        "project_spec": spec,
+    }
+
+
 def render_project_spec_review(spec: Dict[str, Any]) -> str:
     project = spec.get("project", {}) or {}
     planning = spec.get("planning", {}) or {}
@@ -283,7 +453,7 @@ def render_project_spec_review(spec: Dict[str, Any]) -> str:
         f"- gate_mode: `{planning.get('gate_mode', '')}`",
         f"- manual_gates: `{', '.join((planning.get('manual_gate_policy') or {}).get('manual_gates', []) or [])}`",
         f"- policy: {(planning.get('manual_gate_policy') or {}).get('meaning', '')}",
-        f"- tasks_per_figure: `{planning.get('tasks_per_figure', '')}`",
+        f"- tasks_per_artifact: `{planning.get('tasks_per_artifact', planning.get('tasks_per_figure', ''))}`",
         f"- task_scale: `{planning.get('task_scale', '')}`",
         f"- minimum_task_count: `{planning.get('minimum_task_count', '')}`",
         "",
@@ -364,7 +534,7 @@ def prepare_codex_spec_draft(
 def build_codex_spec_goal(prompt_path: Path | str = PROMPT_FILENAME, output_path: Path | str = SPEC_FILENAME) -> str:
     return (
         f"/goal Read `{prompt_path}` and write a complete `{output_path}` for Autopilot NodeKit. "
-        "The spec must include project.name, project.type=journal_figures, project.artifact_count, project.journal, planning.tasks_per_figure, planning.gate_mode, inputs, outputs, definition_of_done, forbidden, permissions, codex_native, verification, and repair_policy. "
+        "The spec must include project.name, project.type (journal_figures only when truly a figure batch; otherwise science_workflow/materials_dft_sevennet/matlantis_workflow/rag_local_llm), project.artifact_count, planning.tasks_per_artifact, planning.gate_mode, inputs, outputs, definition_of_done, forbidden, permissions, codex_native, verification, and repair_policy. "
         "If gate_mode or task_scale is not specified, write explicit questions in PROJECT_SPEC.md instead of silently guessing. "
         "Gate modes are fast/balanced/strict. Task scales are smoke/standard/prod. "
         "Do not start execution; only create or refine the project specification and explain any missing assumptions in PROJECT_SPEC.md."

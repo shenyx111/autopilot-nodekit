@@ -14,9 +14,10 @@ from .db import AutoDB
 from .graph_patch import apply_graph_patch
 from .memory import create_memory_nodes_from_result
 from .render import render_live_manifest
-from .util import load_yaml, now_iso, read_json, run_command, write_json, write_text, workspace_paths
+from .util import append_jsonl, load_yaml, now_iso, read_json, run_command, write_json, write_text, workspace_paths
 from .verifier import select_verifier
 from .santa_review import evaluate_santa_review
+from .shell_safety import lint_shell_command, render_findings, should_block
 
 PASS_LIKE = {"passed", "skipped"}
 
@@ -326,20 +327,52 @@ def read_existing(path: Path) -> str:
         return ""
 
 
-def worker_loop(workspace: Path, db: AutoDB, worker_id: str, max_cycles: int = 100, sleep_seconds: int = 5, lease_seconds: int = 1800) -> int:
+def worker_loop(workspace: Path, db: AutoDB, worker_id: str, max_cycles: int = 100, sleep_seconds: int = 5, lease_seconds: int = 0) -> int:
     cycles = 0
     idle = 0
+    _write_worker_heartbeat(workspace, worker_id, phase="started", cycle=cycles, detail="worker-loop started")
     while max_cycles <= 0 or cycles < max_cycles:
+        _write_worker_heartbeat(workspace, worker_id, phase="cycle_start", cycle=cycles + 1)
         run_id = run_once(workspace, db, worker_id, lease_seconds=lease_seconds)
         cycles += 1
         if run_id is None:
             idle += 1
+            _write_worker_heartbeat(workspace, worker_id, phase="idle", cycle=cycles, detail=f"no ready task; idle_count={idle}")
             if idle >= 3:
+                _write_worker_heartbeat(workspace, worker_id, phase="stopped_idle", cycle=cycles, detail="no ready tasks after 3 idle polls")
                 break
             time.sleep(sleep_seconds)
         else:
             idle = 0
+            try:
+                run = db.get_run(run_id)
+                task_id = run["task_id"] if run is not None else None
+            except Exception:
+                task_id = None
+            _write_worker_heartbeat(workspace, worker_id, phase="run_completed", cycle=cycles, run_id=run_id, task_id=task_id)
+    _write_worker_heartbeat(workspace, worker_id, phase="exited", cycle=cycles, detail="worker-loop exited")
     return cycles
+
+
+def _write_worker_heartbeat(workspace: Path, worker_id: str, *, phase: str, cycle: int, run_id: str | None = None, task_id: str | None = None, detail: str = "") -> None:
+    paths = workspace_paths(workspace)
+    bg_dir = paths["automation"] / "background"
+    log_dir = workspace / "logs" / "background"
+    bg_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "ts": now_iso(),
+        "worker_id": worker_id,
+        "pid": os.getpid(),
+        "phase": phase,
+        "cycle": cycle,
+        "run_id": run_id,
+        "task_id": task_id,
+        "detail": detail,
+    }
+    write_json(bg_dir / f"{worker_id}.heartbeat.json", payload)
+    append_jsonl(bg_dir / f"{worker_id}.heartbeat.jsonl", payload)
+    append_jsonl(log_dir / f"{worker_id}.heartbeat.jsonl", payload)
 
 
 def run_verifier_if_configured(workspace: Path, config: Dict[str, Any], task: Any, run_dir: Path, task_id: str, run_id: str, env: Dict[str, str]) -> Tuple[Optional[int], Dict[str, Any]]:
@@ -349,11 +382,25 @@ def run_verifier_if_configured(workspace: Path, config: Dict[str, Any], task: An
         return None, verifier
     timeout = verifier.get("timeout_seconds")
     expanded = expand_command(command, workspace=workspace, run_dir=run_dir, task_id=task_id, run_id=run_id)
+
+    # v0.9.1: deterministic verifiers must be read-only and shell-safe. This
+    # prevents accidents such as backtick command substitution in report text
+    # causing an empty sbatch/scancel/rm-style command to execute. Operators can
+    # opt in only for exceptional migrations by setting NODEKIT_ALLOW_RISKY_VERIFIER=1.
+    findings = lint_shell_command(expanded, purpose="verifier", platform=os.name)
+    if findings and should_block(findings) and env.get("NODEKIT_ALLOW_RISKY_VERIFIER") != "1":
+        rendered = render_findings(findings)
+        write_text(
+            run_dir / "verifier.log",
+            f"# verifier blocked by shell-safety lint\n\nsource: `{verifier.get('source')}`\ncommand: `{command}`\nexpanded: `{expanded}`\nexit_code: 126\n\n## findings\n{rendered}\n\nSet NODEKIT_ALLOW_RISKY_VERIFIER=1 only after human review if this verifier is intentionally side-effecting.\n",
+        )
+        return 126, verifier
+
     try:
         proc = run_command(expanded, cwd=workspace, env=env, timeout=timeout)
         write_text(
             run_dir / "verifier.log",
-            f"# verifier\n\nsource: `{verifier.get('source')}`\ncommand: `{command}`\nexpanded: `{expanded}`\nexit_code: {proc.returncode}\n\n## stdout\n```\n{proc.stdout}\n```\n\n## stderr\n```\n{proc.stderr}\n```\n",
+            f"# verifier\n\nsource: `{verifier.get('source')}`\ncommand: `{command}`\nexpanded: `{expanded}`\nexit_code: {proc.returncode}\n\n## shell-safety\n{render_findings(findings)}\n\n## stdout\n```\n{proc.stdout}\n```\n\n## stderr\n```\n{proc.stderr}\n```\n",
         )
         return proc.returncode, verifier
     except subprocess.TimeoutExpired as exc:

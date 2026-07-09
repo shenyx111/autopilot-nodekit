@@ -418,10 +418,12 @@ def render_task_review(manifest: Dict[str, Any]) -> str:
     tasks = manifest.get("tasks", []) or []
     gates = project.get("review_gates", {}) or {}
     gate_mode = project.get("gate_mode", "strict")
+    artifact_label = "figures" if project.get("plan_type") == "journal_figures" else "artifacts/workflow stages"
+    pilot_label = "Figure 001" if project.get("plan_type") == "journal_figures" else "F001 pilot workflow stage"
     lines = [
         "# Task Review",
         "",
-        "This file is for the required startup human review before Autopilot NodeKit runs worker tasks. In fast mode, this is the only manual stop before the loop; use verifier/Santa/repair/final audit for the rest.",
+        f"This file is for the required startup human review before Autopilot NodeKit runs worker tasks. In fast mode, this is the only manual stop before the loop; use verifier/Santa/repair/final audit for the rest. This plan targets {artifact_label}.",
         "",
         "## Project",
         "",
@@ -431,7 +433,7 @@ def render_task_review(manifest: Dict[str, Any]) -> str:
         f"- artifact_count: `{project.get('artifact_count', '')}`",
         f"- actual_task_count: `{len(tasks)}`",
         f"- minimum_task_count: `{project.get('minimum_task_count', '')}`",
-        f"- journal: `{project.get('journal', '')}`",
+        f"- journal/target: `{project.get('journal', project.get('target', 'n/a'))}`",
         f"- output_dir: `{project.get('output_dir', '')}`",
         f"- gate_mode: `{gate_mode}`",
         f"- task_scale: `{project.get('task_scale', '')}`",
@@ -459,7 +461,7 @@ def render_task_review(manifest: Dict[str, Any]) -> str:
         lines += [
             f"0. Startup approval: `{gates.get('start', 'G000_START_REVIEW')}` covers project spec, Layer 0, contract, and manifest.",
             f"1. Boundary test: `{gates.get('boundary_test', 'H010_BOUNDARY_PERMISSION_TEST')}` must pass.",
-            f"2. Figure 001 QC is the automatic pilot guard; F002+ depend on `{gates.get('automatic_pilot_guard', 'F001_QC')}`.",
+            f"2. {pilot_label} QC is the automatic pilot guard; F002+ depend on `{gates.get('automatic_pilot_guard', 'F001_QC')}`.",
             f"3. Final audit: `{gates.get('final_audit', 'Z999_FINAL_AUDIT')}`.",
         ]
     lines += [
@@ -476,12 +478,12 @@ def render_task_review(manifest: Dict[str, Any]) -> str:
         lines += [
             "python -m autopilot_nodekit approve-setup --workspace . --summary 'Layer 0 setup reviewed and approved.'",
             "python -m autopilot_nodekit approve-plan --workspace . --summary 'Plan reviewed and approved.'",
-            "python -m autopilot_nodekit approve-pilot --workspace . --summary 'Figure 001 reviewed and approved for batch loop.'",
+            "python -m autopilot_nodekit approve-pilot --workspace . --summary 'Pilot reviewed and approved for batch loop.'",
         ]
     elif gate_mode == "balanced":
         lines += [
             "python -m autopilot_nodekit approve-start --workspace . --summary 'Project spec, Layer 0 setup, contract, task manifest, permissions, and loop mode reviewed.'",
-            "python -m autopilot_nodekit approve-pilot --workspace . --summary 'Figure 001 reviewed and approved for batch loop.'",
+            "python -m autopilot_nodekit approve-pilot --workspace . --summary 'Pilot reviewed and approved for batch loop.'",
         ]
     else:
         lines += ["python -m autopilot_nodekit approve-start --workspace . --summary 'Project spec, Layer 0 setup, contract, task manifest, permissions, and loop mode reviewed.'"]

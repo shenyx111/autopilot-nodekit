@@ -1,0 +1,4 @@
+Autopilot NodeKit
+
+This project provides a local control plane for long-running Codex-oriented task loops.
+It does not include OpenAI, Codex, Santa-method, Matlantis, SevenNet, RAGFlow, VASP, or other third-party proprietary services or models. Users are responsible for complying with the licenses and terms for any external tools they connect.

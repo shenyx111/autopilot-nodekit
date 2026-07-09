@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Compile
+        run: python -m compileall -q autopilot_nodekit tests
+      - name: Test bootstrap and shell safety
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          python -m pytest -q \
+            tests/test_bootstrap_v09.py \
+            tests/test_shell_safety_v091.py \
+            tests/test_smart_start_background.py
+      - name: Test runner control plane core
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          python -m pytest -q \
+            tests/test_runner_control_plane.py::test_verifier_failure_overrides_worker_passed \
+            tests/test_runner_control_plane.py::test_bad_worker_result_json_does_not_leave_task_running \
+            tests/test_runner_control_plane.py::test_santa_dual_review_required_before_task_passes \
+            tests/test_runner_control_plane.py::test_after_attempt_bridge_task_after_failed_parent_becomes_ready \
+            tests/test_runner_control_plane.py::test_events_jsonl_is_written \
+            tests/test_runner_control_plane.py::test_task_level_verifier_takes_precedence_over_global_verifier \
+            tests/test_runner_control_plane.py::test_manifest_reimport_replaces_declared_edge_list \
+            tests/test_runner_control_plane.py::test_codex_goal_generation_uses_task_verifier_and_stays_compact \
+            tests/test_runner_control_plane.py::test_install_codex_native_enables_goals_feature
+      - name: Test workflow generation
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          python -m pytest -q \
+            tests/test_runner_control_plane.py::test_figure_plan_generates_many_review_gated_tasks \
+            tests/test_runner_control_plane.py::test_pilot_gate_blocks_bulk_until_human_approval \
+            tests/test_runner_control_plane.py::test_interactive_codex_prepare_and_finish \
+            tests/test_runner_control_plane.py::test_reset_graph_removes_residual_ready_tasks_before_generated_plan \
+            tests/test_runner_control_plane.py::test_project_spec_from_chinese_prompt_fast_mode_generates_single_start_gate \
+            tests/test_runner_control_plane.py::test_balanced_mode_keeps_only_start_and_pilot_human_gates \
+            tests/test_runner_control_plane.py::test_codex_draft_spec_prepares_replayable_script

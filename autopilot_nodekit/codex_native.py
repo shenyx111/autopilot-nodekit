@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from .util import write_text
+from .bootstrap import install_nodekit_runtime
 
 
 AGENTS_MD = '# AGENTS.md\n\n## Project identity\n\nThis repository is a Codex-native local autopilot control plane.\n\nUse Autopilot NodeKit as the outer loop. Do not create independent unbounded inner loops unless the task explicitly asks for them.\n\n## Core commands\n\n- Install: `python -m pip install -e .`\n- Demo: `make demo`\n- Compile check: `python -m compileall -q autopilot_nodekit`\n- Tests: `python -m pytest -q`\n- Status: `python -m autopilot_nodekit status --workspace .`\n- Validate graph: `python -m autopilot_nodekit validate --workspace .`\n- Codex-native files: `python -m autopilot_nodekit install-codex-native --workspace .`\n- Generate a native goal: `python -m autopilot_nodekit codex-goal --workspace . --task-id T001`\n- Preferred prompt-to-loop startup: `python -m autopilot_nodekit start-from-prompt --workspace . --prompt-file PROJECT_PROMPT.md --gate-mode fast --force-codex-native`\n- AI draft/refine project spec: `python -m autopilot_nodekit codex-draft-spec --workspace . --prompt-file PROJECT_PROMPT.md --gate-mode fast`\n- Start from an explicit spec: `python -m autopilot_nodekit start-from-spec --workspace . --spec PROJECT_SPEC.yml --force-codex-native`\n- Legacy strict figure startup: `python -m autopilot_nodekit start-figures --workspace . --figures 100 --journal "target journal" --gate-mode strict`\n- Review Layer 0 setup: read `PROJECT_SETUP.yml` and `SETUP_REVIEW.md`.\n- Approve setup after human review: `python -m autopilot_nodekit approve-setup --workspace .`\n- Review plan: read `GOAL_CONTRACT.md`, `TASK_REVIEW.md`, `REQUIREMENTS_LOCK.md`, and `automation/manifest.live.md`.\n- Approve plan after human review: `python -m autopilot_nodekit approve-plan --workspace .`\n- Prepare one interactive Codex task dialog: `python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive`\n- Finish an interactive Codex task after `worker_result.json` exists: `python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>`\n- Run non-interactive loop: `python -m autopilot_nodekit worker-loop --workspace . --worker-id codex-local`\n\n## Non-negotiable loop workflow\n\nPrefer PROJECT_SPEC-driven startup. A fuzzy user prompt should be converted into `PROJECT_SPEC.yml`, then into `PROJECT_SETUP.yml`, `GOAL_CONTRACT.yml`, and `automation/manifest.yml`.\n\nGate modes control how often humans stop the loop:\n\n- `fast`: one startup review, then boundary test, F001 automatic pilot guard, bulk loop, final audit.\n- `balanced`: one startup review, boundary test, F001 human pilot review, bulk loop, final audit.\n- `strict`: separate setup review, plan review, boundary test, F001 human pilot review, bulk loop, final audit.\n\nDo not collapse a large artifact request into a tiny task list. For `N` figures/artifacts, the graph must contain at least `N` tasks and normally at least `2N`; with 100 figures and 3 tasks per figure, fast mode creates 303 tasks, balanced 304, and strict 305.\n\n## Hard gate rules\n\n- In fast/balanced mode, `G000_START_REVIEW` starts as `review_pending` and is not claimable by workers; approve it with `approve-start` only after reading `PROJECT_SPEC.md`, `SETUP_REVIEW.md`, `GOAL_CONTRACT.md`, `TASK_REVIEW.md`, and `REQUIREMENTS_LOCK.md`.\n- In strict mode, `G000_SETUP_REVIEW` and `H000_PLAN_REVIEW` are separate `review_pending` gates.\n- `H010_BOUNDARY_PERMISSION_TEST` must depend on the approved startup/plan gate and must pass before figure work.\n- In fast mode, `F002+` bulk figure tasks must depend on `F001_QC`; this is the automatic pilot guard with no extra human stop.\n- In balanced/strict mode, `H020_PILOT_REVIEW` starts as `review_pending`, depends on `F001_QC`, and gates `F002+`.\n- `Z999_FINAL_AUDIT` must depend on all figure QC tasks.\n- Approvals must use `approve-start`, `approve-setup`, `approve-plan`, `approve-pilot`, or `approve-task`; do not edit SQLite manually.\n- Run `python -m autopilot_nodekit validate --workspace . --strict` after graph generation, approvals, graph patches, and before bulk work.\n\n## Safety rules\n\n- Do not mark a task passed unless the configured verifier passes.\n- Treat verifier output as more authoritative than the worker\'s self-reported status.\n- Every non-human task pass requires Santa dual-review: two independent reviewers must return NICE/NICE in `worker_result.json`.\n- If either reviewer returns NAUGHTY, repair the smallest issue, re-run the verifier, and re-run fresh reviews.\n- Do not edit `automation/autopilot.sqlite` directly.\n- Do not delete task history; supersede instead.\n- Treat `runs/` and `memory/nodes/` as durable evidence.\n- If `worker_result.json` is malformed, mark the run failed and preserve the malformed file.\n- If the next action would bypass a human gate, stop and report the gate that needs approval.\n\n## Graph rules\n\n- Use `depends_on` only for dependencies that must be `passed`.\n- Use `after_attempt` for diagnostic bridge tasks that should run after a failed, blocked, skipped, superseded, or passed predecessor.\n- Use `blocked_by` only for explicit blockers that should release after passed/skipped/superseded.\n- Use `parent_id` and `memory.required_task_ids` to inherit context from a failed parent.\n- Run `python -m autopilot_nodekit validate --workspace .` after graph patches.\n\n## Codex loop rules\n\nFor debugging, refactoring, benchmarking, reproduction, CI-fix, experiment, or artifact-batch tasks that may require multiple attempts, use `$autopilot-nodekit-loop-contract`. For prompt-to-spec startup, use `$autopilot-project-spec`. For journal figures or similar artifact batches, use `$autopilot-review-gated-figure-loop`. For per-task adversarial review, use `$autopilot-santa-review`.\n\nUse `python -m autopilot_nodekit codex-goal --workspace . --task-id <ID>` to render a pasteable Codex `/goal` command for a NodeKit task. Codex owns durable `/goal` state inside the active Codex thread; NodeKit owns the external task graph, verifier, review gates, and evidence trail.\n\nFor an interactive per-task Codex dialog:\n\n1. `python -m autopilot_nodekit codex-prepare --workspace . --worker-id codex-interactive`\n2. Run the printed `bash runs/<run_id>/open_codex.sh` command.\n3. Let Codex complete that one task and write `runs/<run_id>/worker_result.json`.\n4. `python -m autopilot_nodekit codex-finish --workspace . --run-id <run_id>`.\n\nKeep progress in `LOOP_STATE.md` or `PLANS.md`. Do not declare success without verifier evidence. If `/goal` is hidden, enable `features.goals = true` in `.codex/config.toml` or run `codex features enable goals`.\n'
@@ -119,7 +120,7 @@ HOOKS_JSON_EXAMPLE = r'''{
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh -lc 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd); exec /usr/bin/env python3 \"$ROOT/.codex/hooks/autopilot_stop_render.py\"'",
+            "command": "python .codex/hooks/autopilot_stop_render.py",
             "timeout": 30,
             "statusMessage": "Rendering Autopilot NodeKit live manifest"
           }
@@ -581,6 +582,7 @@ Before a non-human task is marked passed, run Santa dual-review and require NICE
 
 def install_codex_native_files(workspace: Path, force: bool = False) -> None:
     workspace = workspace.resolve()
+    install_nodekit_runtime(workspace, force=force)
     files: Dict[Path, str] = {
         workspace / "AGENTS.md": AGENTS_MD,
         workspace / "LOOP_STATE.md": LOOP_STATE_MD,
@@ -811,3 +813,34 @@ python -m autopilot_nodekit background-doctor --workspace .
 python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
 ```
 '''
+
+
+# v0.9 hardening guidance appended after field feedback.
+AGENTS_MD += """
+
+## v0.9 Bootstrap hardening rules
+
+Before approving startup or launching unattended background workers, run:
+
+```bash
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit validate --workspace . --strict
+```
+
+Do not approve startup if bootstrap checks show any of these unresolved problems:
+
+- `worker.command` is empty;
+- `autopilot_nodekit` cannot be imported from the workspace/background environment;
+- `.codex/config.toml` contains `job_max_runtime_seconds = 0`;
+- Windows hooks contain `/bin/sh`;
+- requested tmux backend fails a real tmux smoke test;
+- a running task has no live heartbeat and no worker_result.
+
+Use `.nodekit/nodekit` and `.nodekit/codex_worker.*` wrappers instead of relying on ad hoc shell PYTHONPATH.
+
+For non-figure science workflows, do not let demo/figure templates drive the project. Prefer an explicit `PROJECT_SPEC.yml` with `project.type` such as `science_workflow`, `materials_dft_sevennet`, `matlantis_workflow`, or `rag_local_llm`, then run `start-from-spec`.
+
+When a repair task passes, use `resolve-by-repair` if the failed parent blocks downstream tasks. Do not keep nesting repair tasks forever.
+
+For detached/background runs, do not mechanically run `codex-finish` while the child worker may still be alive. Use `background-status`, `events.jsonl`, heartbeat files, and `recover-stale` if the run is abandoned.
+"""

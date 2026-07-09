@@ -1,0 +1,19 @@
+Autopilot NodeKit v0.9.1 open-source GitHub bundle
+
+Included:
+- Python package: autopilot_nodekit/
+- Tests: tests/
+- Examples: examples/
+- Docs: docs/
+- Codex skills and project config examples: .agents/, .codex/
+- GitHub CI and templates: .github/
+- License: MIT
+
+Excluded by .gitignore:
+- real runs/
+- logs/
+- SQLite task state
+- memory nodes
+- private project specs/answers
+- secrets/API keys
+- large compute outputs/model files

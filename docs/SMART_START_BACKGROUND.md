@@ -1,6 +1,6 @@
 # Smart-start and background execution
 
-v0.8 makes `autopilot-nodekit` a fixed startup flow instead of a long prompt the user must remember.
+v0.9 keeps `autopilot-nodekit` as a fixed startup flow and hardens the path into background loop execution. It now avoids forcing non-figure projects through the journal-figure template, installs `.nodekit` runtime wrappers, and checks the background backend before startup approval.
 
 ## Trigger phrase
 
@@ -51,17 +51,19 @@ Automatic quality controls are not weakened by `fast`: verifier, Santa dual revi
 
 ## Task scale strength
 
-For `N` figures/artifacts:
+For `N` figures/artifacts/workflow stages:
 
-- `smoke`: about `2N + gates` tasks. Uses spec + render/QC per artifact.
-- `standard`: about `3N + gates` tasks. Uses spec + render + QC per artifact.
-- `prod`: about `4N + gates` tasks. Uses spec + render + journal/compliance check + QC per artifact.
+- `smoke`: about `2N + gates` tasks. Uses spec + build/QC per artifact.
+- `standard`: about `3N + gates` tasks. Uses spec + build + QC per artifact.
+- `prod`: about `4N + gates` tasks. Uses spec + build + validation/compliance + QC per artifact.
 
 For 100 figures in fast mode:
 
 - `smoke`: about 203 tasks.
 - `standard`: about 303 tasks.
 - `prod`: about 403 tasks.
+
+For non-figure science projects, set `project.type` explicitly, for example `matlantis_workflow`, `materials_dft_sevennet`, `rag_local_llm`, or `science_workflow`. This prevents demo/figure template contamination.
 
 ## Background execution
 
@@ -95,4 +97,29 @@ python -m autopilot_nodekit launch-background --workspace . --worker-id codex-wo
 
 ```text
 基于 autopilot-nodekit 包里的固定流程，完成以下任务：<你的任务>。请先把我的任务写入 PROJECT_PROMPT.md，然后运行 smart-start；如果 START_QUESTIONS.md 出现，只问我里面缺失的设置，不要开始任务；设置确认后再生成 PROJECT_SPEC.yml、Goal Contract、Task Manifest，并从 next-command 给出的强命令继续。
+```
+
+## v0.9 bootstrap hardening
+
+Before approving `G000_START_REVIEW`, run:
+
+```bash
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit validate --workspace . --strict
+```
+
+Do not approve startup if `background-doctor` reports an empty worker command, Python import failure, invalid Codex config, platform-incompatible hook, or failed tmux smoke test.
+
+After approval, start exactly one background worker:
+
+```bash
+python -m autopilot_nodekit launch-background --workspace . --worker-id codex-worker --max-cycles 0
+```
+
+Use these commands to inspect and repair the control plane:
+
+```bash
+python -m autopilot_nodekit background-status --workspace . --worker-id codex-worker
+python -m autopilot_nodekit recover-stale --workspace . --run-id <RUN_ID> --mark-failed
+python -m autopilot_nodekit resolve-by-repair --workspace . --failed-task-id <FAILED> --repair-task-id <PASSED_REPAIR>
 ```

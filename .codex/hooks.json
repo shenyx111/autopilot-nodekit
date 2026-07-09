@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh -lc 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd); exec /usr/bin/env python3 \"$ROOT/.codex/hooks/autopilot_stop_render.py\"'",
+            "command": "python .codex/hooks/autopilot_stop_render.py",
             "timeout": 30,
             "statusMessage": "Rendering Autopilot NodeKit live manifest"
           }

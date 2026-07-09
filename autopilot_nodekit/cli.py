@@ -11,6 +11,7 @@ from .codex_goal import build_codex_goal, write_codex_goal_file
 from .context import collect_memory_for_task
 from .artifact_verify import verify_artifact
 from .figure_plan import generate_journal_figure_manifest, write_figure_manifest, write_review_files
+from .workflow_plan import generate_workflow_manifest, write_project_manifest
 from .setup_config import load_project_setup, render_setup_review, validate_project_setup
 from .goal_contract import build_figure_goal_contract, load_goal_contract, write_goal_contract, render_goal_contract_review, validate_goal_contract, ensure_memory_dirs
 
@@ -21,6 +22,7 @@ from .project_spec import (
     prepare_codex_spec_draft,
     project_spec_path,
     spec_to_figure_plan_kwargs,
+    spec_to_workflow_plan_kwargs,
     write_project_spec,
 )
 from .db import AutoDB, GATING_EDGE_TYPES
@@ -33,6 +35,7 @@ from .workflow import next_command as compute_next_command, format_next_command
 from .repair import add_repair_task
 from .tmux import launch_tmux_worker
 from .background import detect_background_backends, launch_background_worker
+from .bootstrap import install_nodekit_runtime, worker_command_for_platform, nodekit_command_for_platform
 from .smart_start import (
     TASK_SCALE_TO_TASKS_PER_FIGURE,
     analyze_start_prompt,
@@ -42,11 +45,12 @@ from .smart_start import (
     write_start_questions,
 )
 from .util import dump_yaml, load_yaml, render_table, workspace_paths
+from .shell_safety import lint_shell_command, render_findings, should_block
 
 
 def default_interactive_codex_config() -> dict[str, Any]:
     return {
-        "worker": {"agent": "codex-interactive", "command": "", "timeout_seconds": None},
+        "worker": {"agent": "codex-cli", "command": worker_command_for_platform(), "timeout_seconds": None},
         "verifier": {"command": "", "timeout_seconds": None},
         "memory": {
             "mode": "structured_non_lossy",
@@ -78,9 +82,39 @@ def default_interactive_codex_config() -> dict[str, Any]:
 
 
 def ensure_default_config(paths: dict[str, Path]) -> None:
+    install_nodekit_runtime(paths["workspace"], force=True)
+    paths["automation"].mkdir(parents=True, exist_ok=True)
     if not paths["config"].exists():
-        paths["automation"].mkdir(parents=True, exist_ok=True)
         dump_yaml(paths["config"], default_interactive_codex_config())
+        return
+    # Upgrade old v0.8 interactive/demo configs that had worker.command: ''.
+    try:
+        cfg = load_yaml(paths["config"])
+    except Exception:
+        return
+    worker = cfg.setdefault("worker", {})
+    changed = False
+    if not str(worker.get("command") or "").strip():
+        worker["agent"] = "codex-cli"
+        worker["command"] = worker_command_for_platform(paths["workspace"])
+        worker["timeout_seconds"] = None
+        changed = True
+    if changed:
+        dump_yaml(paths["config"], cfg)
+
+def manifest_from_project_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    project_type = str(((spec.get("project") or {}).get("type")) or "journal_figures")
+    if project_type == "journal_figures":
+        return generate_journal_figure_manifest(**spec_to_figure_plan_kwargs(spec))
+    return generate_workflow_manifest(**spec_to_workflow_plan_kwargs(spec))
+
+
+def write_manifest_for_project(workspace: Path, manifest: dict[str, Any], spec: dict[str, Any]) -> None:
+    project_type = str(((manifest.get("project") or {}).get("plan_type")) or "journal_figures")
+    if project_type == "journal_figures":
+        write_figure_manifest(workspace, manifest)
+    else:
+        write_project_manifest(workspace, manifest, spec=spec)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,19 +153,19 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("claim", help="Claim one ready task without running it, for debugging.")
     p.add_argument("--workspace", default=".")
     p.add_argument("--worker-id", required=True)
-    p.add_argument("--lease-seconds", type=int, default=1800)
+    p.add_argument("--lease-seconds", type=int, default=0)
 
     p = sub.add_parser("run-once", help="Claim and run one ready task.")
     p.add_argument("--workspace", default=".")
     p.add_argument("--worker-id", required=True)
-    p.add_argument("--lease-seconds", type=int, default=1800)
+    p.add_argument("--lease-seconds", type=int, default=0)
 
     p = sub.add_parser("worker-loop", help="Run repeated claim/run/render cycles.")
     p.add_argument("--workspace", default=".")
     p.add_argument("--worker-id", required=True)
     p.add_argument("--max-cycles", type=int, default=0, help="0 means unlimited cycles; no NodeKit wall-clock timeout.")
     p.add_argument("--sleep-seconds", type=int, default=5)
-    p.add_argument("--lease-seconds", type=int, default=1800)
+    p.add_argument("--lease-seconds", type=int, default=0)
 
     p = sub.add_parser("launch-tmux", help="Start a background tmux worker loop.")
     p.add_argument("--workspace", default=".")
@@ -146,11 +180,35 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("launch-background", help="Launch an unlimited background worker with the best available backend for this OS.")
     p.add_argument("--workspace", default=".")
     p.add_argument("--worker-id", required=True)
-    p.add_argument("--backend", choices=["tmux", "nohup", "setsid", "powershell", "foreground"], help="Override auto-detected backend.")
+    p.add_argument("--backend", choices=["tmux", "nohup", "setsid", "detached", "powershell", "foreground"], help="Override auto-detected backend.")
     p.add_argument("--max-cycles", type=int, default=0, help="0 means unlimited cycles; no NodeKit wall-clock timeout.")
     p.add_argument("--sleep-seconds", type=int, default=5)
-    p.add_argument("--lease-seconds", type=int, default=1800)
+    p.add_argument("--lease-seconds", type=int, default=0)
     p.add_argument("--session-name")
+
+    p = sub.add_parser("recover-stale", help="Inspect or mark stale running task runs for repair instead of leaving them stuck in running.")
+    p.add_argument("--workspace", default=".")
+    p.add_argument("--run-id")
+    p.add_argument("--age-minutes", type=float, default=30.0)
+    p.add_argument("--mark-failed", action="store_true", help="Write an inferred failed worker_result.json and finish the run with exit_code=1.")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("resolve-by-repair", help="Resolve a failed task by a passed repair task and rewire downstream gating edges to the repair evidence.")
+    p.add_argument("--workspace", default=".")
+    p.add_argument("--failed-task-id", required=True)
+    p.add_argument("--repair-task-id", required=True)
+    p.add_argument("--summary", default="Resolved by passed repair task.")
+
+    p = sub.add_parser("background-status", help="Inspect background heartbeat/launch metadata for one worker.")
+    p.add_argument("--workspace", default=".")
+    p.add_argument("--worker-id", default="codex-worker")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("shell-safety-lint", help="Lint a shell command for verifier/bootstrap safety issues such as command substitution or mutating Slurm commands.")
+    p.add_argument("--command", required=True)
+    p.add_argument("--purpose", default="verifier", choices=["verifier", "bootstrap", "preflight", "doctor", "worker"])
+    p.add_argument("--platform", default=None)
+    p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("apply-graph-patch", help="Apply a graph_patch JSON file.")
     p.add_argument("--workspace", default=".")
@@ -345,13 +403,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--workspace", default=".")
 
     args = parser.parse_args(argv)
+    if args.cmd == "shell-safety-lint":
+        findings = lint_shell_command(args.command, purpose=args.purpose, platform=args.platform)
+        if args.json:
+            print(json.dumps([f.to_dict() for f in findings], ensure_ascii=False, indent=2))
+        else:
+            print(render_findings(findings))
+        return 2 if should_block(findings) else 0
+
     workspace = Path(args.workspace).resolve()
     paths = workspace_paths(workspace)
 
     if args.cmd == "doctor":
         return doctor(workspace)
     if args.cmd == "background-doctor":
-        info = detect_background_backends()
+        info = detect_background_backends(workspace)
         if args.json:
             print(json.dumps(info, ensure_ascii=False, indent=2))
         else:
@@ -366,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
         db.init_schema()
         if args.cmd == "init":
             install_initial_files(workspace, args.manifest, args.config, force=args.force)
+            install_nodekit_runtime(workspace, force=args.force)
             ensure_memory_dirs(workspace)
             if args.codex_native:
                 install_codex_native_files(workspace, force=args.force)
@@ -378,7 +445,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "install-codex-native":
             install_codex_native_files(workspace, force=args.force)
-            print("Codex-native files installed.")
+            install_nodekit_runtime(workspace, force=args.force)
+            print("Codex-native files and NodeKit runtime wrappers installed.")
             return 0
         if args.cmd == "import-manifest":
             import_manifest(db, args.manifest or paths["manifest"])
@@ -437,6 +505,29 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps(info, ensure_ascii=False, indent=2))
             return 0
+        if args.cmd == "recover-stale":
+            from .recovery import recover_stale_runs
+            report = recover_stale_runs(workspace, db, run_id=args.run_id, age_minutes=args.age_minutes, mark_failed=args.mark_failed)
+            render_live_manifest(workspace, db)
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            else:
+                print(render_table([(r.get("run_id"), r.get("task_id"), r.get("action"), r.get("reason")) for r in report["runs"]], ["run_id", "task_id", "action", "reason"]))
+            return 0 if not report.get("errors") else 1
+        if args.cmd == "resolve-by-repair":
+            from .recovery import resolve_by_repair
+            report = resolve_by_repair(db, args.failed_task_id, args.repair_task_id, summary=args.summary)
+            render_live_manifest(workspace, db)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 0
+        if args.cmd == "background-status":
+            from .background import background_status
+            report = background_status(workspace, args.worker_id)
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            else:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 0
         if args.cmd == "start-figures":
             install_codex_native_files(workspace, force=args.force_codex_native)
             manifest = generate_journal_figure_manifest(
@@ -494,15 +585,15 @@ def main(argv: list[str] | None = None) -> int:
                 gate_mode=args.gate_mode,
             )
             write_project_spec(workspace, spec, prompt_text=prompt_text)
-            manifest = generate_journal_figure_manifest(**spec_to_figure_plan_kwargs(spec))
-            write_figure_manifest(workspace, manifest)
+            manifest = manifest_from_project_spec(spec)
+            write_manifest_for_project(workspace, manifest, spec)
             ensure_default_config(paths)
             db.reset_graph(keep_memory=False)
             import_manifest(db, paths["manifest"])
             render_live_manifest(workspace, db)
             report = validate_graph(db, workspace, strict=True)
             project = manifest.get("project", {}) or {}
-            print(f"Started prompt-derived Codex figure loop: figures={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}")
+            print(f"Started prompt-derived Codex loop: artifacts={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}")
             print(f"Review spec: {workspace / 'PROJECT_SPEC.md'}")
             print(f"Review task plan: {workspace / 'TASK_REVIEW.md'}")
             print(format_next_command(compute_next_command(workspace, db)))
@@ -537,15 +628,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             spec = build_spec_from_resolved(prompt_text, analysis.resolved)
             write_project_spec(workspace, spec, prompt_text=prompt_text)
-            manifest = generate_journal_figure_manifest(**spec_to_figure_plan_kwargs(spec))
-            write_figure_manifest(workspace, manifest)
+            manifest = manifest_from_project_spec(spec)
+            write_manifest_for_project(workspace, manifest, spec)
             ensure_default_config(paths)
             db.reset_graph(keep_memory=False)
             import_manifest(db, paths["manifest"])
             render_live_manifest(workspace, db)
             report = validate_graph(db, workspace, strict=True)
             project = manifest.get("project", {}) or {}
-            print(f"Smart-started Codex figure loop: figures={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}, task_scale={project.get('task_scale')}")
+            print(f"Smart-started Codex loop: artifacts={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}, task_scale={project.get('task_scale')}")
             print(f"Review spec: {workspace / 'PROJECT_SPEC.md'}")
             print(f"Review task plan: {workspace / 'TASK_REVIEW.md'}")
             print(format_next_command(compute_next_command(workspace, db)))
@@ -555,15 +646,15 @@ def main(argv: list[str] | None = None) -> int:
             spec_path = args.spec if args.spec.is_absolute() else workspace / args.spec
             spec = load_yaml(spec_path)
             write_project_spec(workspace, spec)
-            manifest = generate_journal_figure_manifest(**spec_to_figure_plan_kwargs(spec))
-            write_figure_manifest(workspace, manifest)
+            manifest = manifest_from_project_spec(spec)
+            write_manifest_for_project(workspace, manifest, spec)
             ensure_default_config(paths)
             db.reset_graph(keep_memory=False)
             import_manifest(db, paths["manifest"])
             render_live_manifest(workspace, db)
             report = validate_graph(db, workspace, strict=True)
             project = manifest.get("project", {}) or {}
-            print(f"Started Codex figure loop from spec: figures={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}")
+            print(f"Started Codex loop from spec: artifacts={project.get('artifact_count')}, tasks={len(manifest['tasks'])}, gate_mode={project.get('gate_mode')}")
             print(format_next_command(compute_next_command(workspace, db)))
             return 1 if report["errors"] else 0
         if args.cmd == "project-spec-review":

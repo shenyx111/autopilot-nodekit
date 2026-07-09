@@ -141,3 +141,30 @@ Layer commands:
 - Repair: `add-repair-task`, then `codex-prepare` and `codex-finish`
 - Human gate: `approve-start`, `approve-setup`, `approve-plan`, `approve-pilot`, `approve-task`, `reject-task`
 - Observability: `metrics`, `replay-run`, `automation/events.jsonl`, `automation/manifest.live.md`
+
+
+## v0.9 Bootstrap hardening rules
+
+Before approving startup or launching unattended background workers, run:
+
+```bash
+python -m autopilot_nodekit background-doctor --workspace .
+python -m autopilot_nodekit validate --workspace . --strict
+```
+
+Do not approve startup if bootstrap checks show any of these unresolved problems:
+
+- `worker.command` is empty;
+- `autopilot_nodekit` cannot be imported from the workspace/background environment;
+- `.codex/config.toml` contains `job_max_runtime_seconds = 0`;
+- Windows hooks contain `/bin/sh`;
+- requested tmux backend fails a real tmux smoke test;
+- a running task has no live heartbeat and no worker_result.
+
+Use `.nodekit/nodekit` and `.nodekit/codex_worker.*` wrappers instead of relying on ad hoc shell PYTHONPATH.
+
+For non-figure science workflows, do not let demo/figure templates drive the project. Prefer an explicit `PROJECT_SPEC.yml` with `project.type` such as `science_workflow`, `materials_dft_sevennet`, `matlantis_workflow`, or `rag_local_llm`, then run `start-from-spec`.
+
+When a repair task passes, use `resolve-by-repair` if the failed parent blocks downstream tasks. Do not keep nesting repair tasks forever.
+
+For detached/background runs, do not mechanically run `codex-finish` while the child worker may still be alive. Use `background-status`, `events.jsonl`, heartbeat files, and `recover-stale` if the run is abandoned.
